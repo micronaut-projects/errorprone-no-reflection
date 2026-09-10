@@ -1,4 +1,17 @@
-The simplest way to use the check is the Gradle plugin, which applies ErrorProne and adds the check to the project:
+The simplest way to use the check is the Gradle plugin, which applies ErrorProne and adds the check to the project. The plugin is published to Maven Central rather than to the Gradle Plugin Portal, so the settings of the build look for plugins there too:
+
+[source,kotlin]
+.settings.gradle.kts
+----
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+----
+
+Then the build applies it:
 
 [source,kotlin]
 ----

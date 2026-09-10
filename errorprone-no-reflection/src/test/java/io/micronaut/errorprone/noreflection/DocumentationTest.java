@@ -20,16 +20,17 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The guide lists what is reported, and has to go on listing exactly that.
+ * The guide lists what each category reports, and has to go on listing exactly that, under the right category.
  */
 class DocumentationTest {
 
@@ -39,18 +40,25 @@ class DocumentationTest {
     private static final Pattern DOCUMENTED = Pattern.compile("`([^`\\s]+#[^`\\s]*)`");
 
     @Test
-    void theGuideListsEveryCallOfEveryCategoryAndNoOther() throws IOException {
+    void theGuideListsTheCallsOfEachCategoryUnderIt() throws IOException {
         String guide = Files.readString(CATEGORIES);
-        Set<String> documented = new TreeSet<>();
-        Matcher matcher = DOCUMENTED.matcher(guide);
-        while (matcher.find()) {
-            documented.add(matcher.group(1).replace("\\|", "|"));
+        Map<ReflectionCategory, Set<String>> documented = new EnumMap<>(ReflectionCategory.class);
+        String[] sections = guide.split("\n== ");
+        // what precedes the first heading introduces the categories, and names none of them
+        for (int i = 1; i < sections.length; i++) {
+            String section = sections[i];
+            ReflectionCategory category = ReflectionCategory.named(section.substring(0, section.indexOf('\n')));
+            Set<String> patterns = new TreeSet<>();
+            Matcher matcher = DOCUMENTED.matcher(section);
+            while (matcher.find()) {
+                patterns.add(matcher.group(1).replace("\\|", "|"));
+            }
+            if (!patterns.isEmpty()) {
+                documented.put(category, patterns);
+            }
         }
-        Set<String> reported = new TreeSet<>();
-        ReflectionMatchers.patterns().forEach((category, patterns) -> {
-            assertTrue(guide.contains("\n== " + category.name() + "\n"), "The guide has no section for " + category);
-            reported.addAll(patterns);
-        });
+        Map<ReflectionCategory, Set<String>> reported = new EnumMap<>(ReflectionCategory.class);
+        ReflectionMatchers.patterns().forEach((category, patterns) -> reported.put(category, new TreeSet<>(patterns)));
         assertEquals(reported, documented);
     }
 }

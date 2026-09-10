@@ -46,7 +46,8 @@ import java.util.Set;
  *     severity 'WARN'                                 // reported without failing the compilation
  *     errorProneVersion = '2.50.0'                    // the ErrorProne the plugin adds
  *     checkedSourceSets = ['main', 'integration']     // the source sets checked, main by default
- *     checkTests = true                               // every source set checked
+ *     checkedTasks = ['compileGenerated']             // compile tasks of no source set checked, none by default
+ *     checkTests = true                               // every compilation checked
  * }
  * }</pre>
  *
@@ -107,8 +108,15 @@ public abstract class NoReflectionExtension {
     public abstract Property<String> getErrorProneVersion();
 
     /**
-     * @return Whether every source set is checked, the tests included, {@code false} by default: a test that proves
-     * something was reached without reflection has to reach it somehow
+     * @return The names of the compile tasks that belong to no source set and are checked, none by default. The
+     * ErrorProne plugin turns ErrorProne on only for the compile tasks of source sets, so such a task also needs
+     * {@code options.errorprone.enabled = true} and ErrorProne on its annotation processor path
+     */
+    public abstract SetProperty<String> getCheckedTasks();
+
+    /**
+     * @return Whether every compilation is checked, the tests and the compile tasks of no source set included,
+     * {@code false} by default: a test that proves something was reached without reflection has to reach it somehow
      */
     public abstract Property<Boolean> getCheckTests();
 

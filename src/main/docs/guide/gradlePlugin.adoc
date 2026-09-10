@@ -1,4 +1,4 @@
-The `io.micronaut.errorprone.no-reflection` plugin applies https://github.com/tbroyer/gradle-errorprone-plugin[`net.ltgt.errorprone`], adds ErrorProne and the check to the project, and turns the `noReflection` block into the check's <<flags, flags>>.
+The `io.micronaut.errorprone.no-reflection` plugin is published to Maven Central, so the settings of a build list it among their plugin repositories, as the <<quickStart, Quick Start>> shows. It applies https://github.com/tbroyer/gradle-errorprone-plugin[`net.ltgt.errorprone`], adds ErrorProne and the check to the project, and turns the `noReflection` block into the check's <<flags, flags>>.
 
 [source,kotlin]
 ----
@@ -13,9 +13,25 @@ noReflection {
     forbidAll()                                        // allow nothing outside allowIn, and honour no suppression
     severity("WARN")                                   // report without failing the compilation, ERROR by default
     checkedSourceSets = setOf("main", "integration")   // the source sets checked, main by default
-    checkTests = true                                  // check every source set
+    checkedTasks = setOf("compileGenerated")           // compile tasks of no source set checked, none by default
+    checkTests = true                                  // check every compilation
     errorProneVersion = "2.50.0"                       // the ErrorProne the plugin adds
 }
 ----
 
-Every category is reported by default. Naming the same scope in `allowIn` again adds to the categories allowed there. `forbidAll()` together with `allow` or `allowCalls` is refused, and so are an unknown category, a malformed call or scope, and a severity other than `ERROR` or `WARN`.
+Every category is reported by default. Naming the same scope in `allowIn` again adds to the categories allowed there. `forbidAll()` together with `allow` or `allowCalls` is refused, and so are an unknown category, a malformed call or scope, and a severity other than `ERROR` or `WARN`, however it is set.
+
+A compile task is checked when it compiles one of the `checkedSourceSets`, when it is named in `checkedTasks`, or when `checkTests` is set; a `JavaCompile` task a build registers outside the source sets is not checked unless it is named. The ErrorProne plugin itself turns ErrorProne on only for the compile tasks of source sets, so such a task also needs it turned on, with ErrorProne on its processor path:
+
+[source,kotlin]
+----
+tasks.register<JavaCompile>("compileGenerated") {
+    // ...
+    options.annotationProcessorPath = configurations.annotationProcessor.get()
+    options.errorprone.isEnabled = true
+}
+
+noReflection {
+    checkedTasks = setOf("compileGenerated")
+}
+----

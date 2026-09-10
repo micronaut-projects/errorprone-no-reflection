@@ -9,6 +9,17 @@
 An [ErrorProne](https://errorprone.info) check, `NoReflection`, that reports reflection: a call, a method reference or a constructor that reaches for it, named by the category it belongs to - most of them a cache the virtual machine fills for a class or a member. A project can allow categories, calls, classes and packages, and choose whether a suppression is honoured.
 
 ```kotlin
+// settings.gradle.kts: the plugin is published to Maven Central rather than to the Gradle Plugin Portal
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+```
+
+```kotlin
+// build.gradle.kts
 plugins {
     java
     id("io.micronaut.errorprone.no-reflection") version "1.0.0"
@@ -60,30 +71,30 @@ Method method = executableMethod.getTargetMethod();
 
 ### `REFLECTION_UTILS`
 
-Micronaut's helpers look members up, read and write fields and invoke methods reflectively. Only the table that maps primitive types to their wrappers and back, which reaches for nothing, is left out.
+Micronaut's helpers look members up, read and write fields and invoke methods reflectively. Left out are the ones that reach for nothing: the table that maps primitive types to their wrappers and back, the check of a setter's name, and the building of an error message.
 
 ```java
 Method method = ReflectionUtils.getRequiredMethod(type, "name");
 ```
 
-- `io.micronaut.core.reflect.ReflectionUtils`: every method but `getWrapperType`, `getPrimitiveType`
+- `io.micronaut.core.reflect.ReflectionUtils`: every method but `getWrapperType`, `getPrimitiveType`, `isSetter`, `newNoSuchMethodError`
 
 ### `BEANS`
 
-The JavaBeans introspector reads every public method of a class to find its properties, and descriptors, statements, encoders and event handlers look methods up and invoke them by name.
+The JavaBeans introspector reads every public method of a class to find its properties, and descriptors, statements, encoders and event handlers look methods up and invoke them by name. What only handles names or caches, such as `Introspector.decapitalize`, is not reported.
 
 ```java
 BeanInfo info = Introspector.getBeanInfo(type);
 ```
 
-- `java.beans.Introspector`: every method and constructor
+- `java.beans.Introspector`: `getBeanInfo`
 - `java.beans.Beans`: `instantiate`, `isInstanceOf`, `getInstanceOf`
 - `java.beans.Statement` and every subtype of it: its constructors, `execute`, `getValue`
 - `java.beans.FeatureDescriptor` and every subtype of it: its constructors
 - `java.beans.PropertyDescriptor` and every subtype of it: `getPropertyType`, `getReadMethod`, `setReadMethod`, `getWriteMethod`, `setWriteMethod`, `createPropertyEditor`, `getIndexedPropertyType`, `getIndexedReadMethod`, `setIndexedReadMethod`, `getIndexedWriteMethod`, `setIndexedWriteMethod`
 - `java.beans.MethodDescriptor`: `getMethod`
 - `java.beans.EventSetDescriptor`: `getAddListenerMethod`, `getRemoveListenerMethod`, `getGetListenerMethod`, `getListenerMethods`
-- `java.beans.EventHandler`: every method and constructor
+- `java.beans.EventHandler`: `create`, `invoke`
 - `java.beans.Encoder` and every subtype of it: `writeObject`, `writeStatement`, `writeExpression`, `getPersistenceDelegate`
 - `java.beans.PersistenceDelegate` and every subtype of it: `writeObject`, `instantiate`, `initialize`
 - `java.beans.XMLDecoder`: `readObject`
@@ -91,13 +102,13 @@ BeanInfo info = Introspector.getBeanInfo(type);
 
 ### `SERIALIZATION`
 
-Java serialization reads the fields, constructors and private `readObject` and `writeObject` methods of every class it meets, and needs serialization metadata in a native image.
+Java serialization reads the fields, constructors and private `readObject` and `writeObject` methods of every class it meets, loads the classes a stream names, and needs serialization metadata in a native image.
 
 ```java
 Object value = objectInputStream.readObject();
 ```
 
-- `java.io.ObjectInputStream` and every subtype of it: `readObject`, `readUnshared`, `defaultReadObject`, `readFields`
+- `java.io.ObjectInputStream` and every subtype of it: `readObject`, `readUnshared`, `defaultReadObject`, `readFields`, `resolveClass`, `resolveProxyClass`
 - `java.io.ObjectOutputStream` and every subtype of it: `writeObject`, `writeUnshared`, `defaultWriteObject`, `putFields`, `writeFields`
 - `java.io.ObjectStreamClass`: `lookup`, `lookupAny`, `forClass`, `getFields`, `getField`, `getSerialVersionUID`
 
@@ -228,7 +239,7 @@ Class<?>[] interfaces = type.getInterfaces();
 
 ### `GENERIC_SIGNATURES`
 
-A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name.
+A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name - which is why every method of a generic type is reported too.
 
 ```java
 Type superclass = type.getGenericSuperclass();
@@ -276,16 +287,16 @@ Method[] methods = type.getDeclaredMethods();
 
 ### `REFLECTIVE_ACCESS`
 
-Reaching a member once it is found - invoking a method, reading or writing a field, creating an instance - makes and keeps an accessor for it, and `setAccessible` and `Module.addOpens` break encapsulation to allow it.
+Reaching a member once it is found - invoking a method, reading or writing the value of a field, creating an instance - makes and keeps an accessor for it, and `setAccessible` and `Module.addOpens` break encapsulation to allow it. Reading the name, type or modifiers of a member already at hand is not reported.
 
 ```java
-Object result = method.invoke(target);
+Object value = field.get(target);
 ```
 
 - `java.lang.reflect.AccessibleObject` and every subtype of it: `setAccessible`, `trySetAccessible`, `canAccess`, `isAccessible`
 - `java.lang.reflect.Constructor`: `newInstance`
 - `java.lang.reflect.Method`: `invoke`
-- `java.lang.reflect.Field`: every method and constructor
+- `java.lang.reflect.Field`: `get`, `getBoolean`, `getByte`, `getChar`, `getShort`, `getInt`, `getLong`, `getFloat`, `getDouble`, `set`, `setBoolean`, `setByte`, `setChar`, `setShort`, `setInt`, `setLong`, `setFloat`, `setDouble`
 - `java.lang.reflect.Array`: every method and constructor
 - `java.lang.Class`: `newInstance`
 - `java.lang.Module`: `addOpens`
@@ -299,12 +310,11 @@ The calls a build forbids besides the categories, with `NoReflection:ForbiddenCa
 ```java
 Object plugin = LegacyReflector.lookup("plugin"); // with forbid("com.example.LegacyReflector#*")
 ```
-
 ## How calls are matched
 
 A call is matched by the method or the constructor the compiler resolved it to, not by how the source spells it. The same call is reported whether it is made directly, through a static import, as a method or constructor reference (`Class::getSimpleName`, `EnumMap::new`), as the constructor of an anonymous subclass or a `super(...)` call, through a subtype that declares or inherits the method (`method.getAnnotation(...)`, `loadClass(...)` in a `ClassLoader` subclass), and wherever it sits: a field initializer, an initializer, a lambda, or a nested, local or anonymous class.
 
-A method of the same name on another type is not reported: `AnnotationMetadata.getAnnotation` reads what Micronaut compiled, `Colour.values()` returns the array the compiler wrote, and `Class.getName`, `Class.getSuperclass` and the name or modifiers of a member already looked up read the class file. A project's own method wrapping a reflective call is not reported where it is called - the call inside it is - unless the build forbids the wrapper with `NoReflection:ForbiddenCalls`.
+A method of the same name on another type is not reported: `AnnotationMetadata.getAnnotation` reads what Micronaut compiled, `Colour.values()` returns the array the compiler wrote, and `Class.getName`, `Class.getSuperclass` and the name, type or modifiers of a member already looked up read the class file. The generic and annotated types a member hands out are the exception: their methods resolve what they describe, and are reported. A project's own method wrapping a reflective call is not reported where it is called - the call inside it is - unless the build forbids the wrapper with `NoReflection:ForbiddenCalls`.
 
 ## With ErrorProne's own checks
 
@@ -326,7 +336,7 @@ repositories {
 
 dependencies {
     errorprone("com.google.errorprone:error_prone_core:2.50.0")
-    errorprone("com.uber.nullaway:nullaway:0.13.4")
+    errorprone("com.uber.nullaway:nullaway:0.14.1")
 }
 
 noReflection {
@@ -341,7 +351,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 ```
 
-A compilation then fails on both a reflective call outside `com.example.ReflectionAccess` and a null returned where NullAway forbids it. The ErrorProne the plugin adds and the one the project declares are resolved like any other dependency, to the higher of the two versions.
+With the `pluginManagement` repositories shown above in the settings, a compilation then fails on both a reflective call outside `com.example.ReflectionAccess` and a null returned where NullAway forbids it. The ErrorProne the plugin adds and the one the project declares are resolved like any other dependency, to the higher of the two versions.
 
 ## Documentation
 

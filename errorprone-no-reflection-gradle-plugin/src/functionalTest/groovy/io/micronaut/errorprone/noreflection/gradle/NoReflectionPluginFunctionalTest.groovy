@@ -318,6 +318,56 @@ class NoReflectionPluginFunctionalTest extends Specification {
         "severity 'INFO'"                         | "noReflection: the severity is ERROR or WARN, not 'INFO'."
     }
 
+    void "a severity other than ERROR or WARN is refused, however it is set"() {
+        given:
+        groovyProject 'severity = net.ltgt.gradle.errorprone.CheckSeverity.OFF'
+        mainSubject 'Object nothing() { return null; }'
+
+        when:
+        fails 'compileJava'
+
+        then:
+        reported 'noReflection: the severity is ERROR or WARN, not OFF.'
+    }
+
+    void "a compilation of no source set is checked only when it is named"() {
+        given:
+        def compileGenerated = """
+            tasks.register('compileGenerated', JavaCompile) {
+                source = fileTree('src/generated/java')
+                classpath = files()
+                destinationDirectory = layout.buildDirectory.dir('classes/generated')
+                // annotationProcessor is the resolvable configuration that holds what errorprone declares
+                options.annotationProcessorPath = configurations.annotationProcessor
+                // the ErrorProne plugin turns itself on for the compile tasks of source sets only
+                options.errorprone.enabled = true
+            }
+        """
+        groovyProject('', compileGenerated)
+        javaFile GENERATED, '''
+            package demo;
+
+            class Generated {
+                Object members(Class<?> type) {
+                    return type.getDeclaredMethods();
+                }
+            }
+        '''
+
+        when:
+        run 'compileGenerated'
+
+        then:
+        noExceptionThrown()
+
+        when:
+        groovyProject("checkedTasks = ['compileGenerated']", compileGenerated)
+        fails 'compileGenerated'
+
+        then:
+        reportsAt GENERATED, 'getDeclaredMethods'
+    }
+
     void "test sources are checked only when asked to be"() {
         given:
         groovyProject()
@@ -395,7 +445,7 @@ class NoReflectionPluginFunctionalTest extends Specification {
             dependencies {
                 errorprone files('${CHECKS}')
                 errorprone 'com.google.errorprone:error_prone_core:${ERROR_PRONE_VERSION}'
-                errorprone 'com.uber.nullaway:nullaway:0.13.4'
+                errorprone 'com.uber.nullaway:nullaway:0.14.1'
             }
 
             noReflection {
@@ -513,6 +563,7 @@ class NoReflectionPluginFunctionalTest extends Specification {
     private static final String SUBJECT = 'src/main/java/demo/Subject.java'
     private static final String REFLECTION_ACCESS = 'src/main/java/demo/ReflectionAccess.java'
     private static final String HANDLES = 'src/main/java/demo/handles/Handles.java'
+    private static final String GENERATED = 'src/generated/java/demo/Generated.java'
 
     private static String verifyDependencies(String configuration, String... expected) {
         """

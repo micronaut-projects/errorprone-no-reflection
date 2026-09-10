@@ -51,12 +51,12 @@ final class ReflectionMatchers {
         rules(ReflectionCategory.TARGET_MEMBERS,
             "io.micronaut.inject.MethodReference+#getTargetMethod",
             "io.micronaut.inject.FieldInjectionPoint+#getField");
-        // any method of the helper but the two that map a primitive type to its wrapper and back, which read a table
-        // compiled into the class; matching the class keeps a helper added later inside
+        // any method of the helper but the ones that read a table compiled into the class, check a name or build an
+        // error message; matching the class keeps a helper added later inside
         rules(ReflectionCategory.REFLECTION_UTILS,
-            "io.micronaut.core.reflect.ReflectionUtils#*-getWrapperType|getPrimitiveType");
+            "io.micronaut.core.reflect.ReflectionUtils#*-getWrapperType|getPrimitiveType|isSetter|newNoSuchMethodError");
         rules(ReflectionCategory.BEANS,
-            "java.beans.Introspector#*",
+            "java.beans.Introspector#getBeanInfo",
             "java.beans.Beans#instantiate|isInstanceOf|getInstanceOf",
             "java.beans.Statement+#<init>|execute|getValue",
             "java.beans.FeatureDescriptor+#<init>",
@@ -65,13 +65,13 @@ final class ReflectionMatchers {
                 + "|getIndexedWriteMethod|setIndexedWriteMethod",
             "java.beans.MethodDescriptor#getMethod",
             "java.beans.EventSetDescriptor#getAddListenerMethod|getRemoveListenerMethod|getGetListenerMethod|getListenerMethods",
-            "java.beans.EventHandler#*",
+            "java.beans.EventHandler#create|invoke",
             "java.beans.Encoder+#writeObject|writeStatement|writeExpression|getPersistenceDelegate",
             "java.beans.PersistenceDelegate+#writeObject|instantiate|initialize",
             "java.beans.XMLDecoder#readObject",
             "java.beans.PropertyEditorManager#findEditor");
         rules(ReflectionCategory.SERIALIZATION,
-            "java.io.ObjectInputStream+#readObject|readUnshared|defaultReadObject|readFields",
+            "java.io.ObjectInputStream+#readObject|readUnshared|defaultReadObject|readFields|resolveClass|resolveProxyClass",
             "java.io.ObjectOutputStream+#writeObject|writeUnshared|defaultWriteObject|putFields|writeFields",
             "java.io.ObjectStreamClass#lookup|lookupAny|forClass|getFields|getField|getSerialVersionUID");
         rules(ReflectionCategory.UNSAFE,
@@ -150,7 +150,9 @@ final class ReflectionMatchers {
             "java.lang.reflect.AccessibleObject+#setAccessible|trySetAccessible|canAccess|isAccessible",
             "java.lang.reflect.Constructor#newInstance",
             "java.lang.reflect.Method#invoke",
-            "java.lang.reflect.Field#*",
+            // what reads or writes the value of a field, which makes its accessor; its name, type and modifiers do not
+            "java.lang.reflect.Field#get|getBoolean|getByte|getChar|getShort|getInt|getLong|getFloat|getDouble"
+                + "|set|setBoolean|setByte|setChar|setShort|setInt|setLong|setFloat|setDouble",
             "java.lang.reflect.Array#*",
             "java.lang.Class#newInstance",
             "java.lang.Module#addOpens",

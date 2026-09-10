@@ -66,6 +66,8 @@ class NoReflectionTest {
         public final class ReflectionUtils {
             public static java.lang.reflect.Method getRequiredMethod(Class<?> type, String name) { return null; }
             public static Class<?> getWrapperType(Class<?> type) { return type; }
+            public static boolean isSetter(String name, Class<?>[] args) { return false; }
+            public static NoSuchMethodError newNoSuchMethodError(Class<?> type, String name, Class<?>[] args) { return null; }
         }
         """,
         "io/micronaut/core/reflect/ClassUtils.java",
@@ -255,6 +257,14 @@ class NoReflectionTest {
                         super(Colour.class);
                     }
                 }
+                static class Input extends java.io.ObjectInputStream {
+                    Input() throws java.io.IOException {
+                    }
+                    Class<?> resolve(java.io.ObjectStreamClass description) throws Exception {
+                        // BUG: Diagnostic contains: [SERIALIZATION]
+                        return resolveClass(description);
+                    }
+                }
                 static class Loader extends ClassLoader {
                     Class<?> load(String name) throws ClassNotFoundException {
                         // BUG: Diagnostic contains: [CLASS_LOADING]
@@ -336,7 +346,14 @@ class NoReflectionTest {
             import io.micronaut.core.reflect.ReflectionUtils;
             class Subject {
                 enum Colour { RED }
-                Object read(AnnotationMetadata metadata, Class<?> type) {
+                Object read(AnnotationMetadata metadata, Class<?> type, java.lang.reflect.Field field) {
+                    field.getName();
+                    field.getType();
+                    field.getModifiers();
+                    ReflectionUtils.isSetter("setName", new Class<?>[] {String.class});
+                    ReflectionUtils.newNoSuchMethodError(type, "name", new Class<?>[0]);
+                    java.beans.Introspector.decapitalize("URL");
+                    java.beans.Introspector.flushCaches();
                     metadata.getAnnotation("Deprecated");
                     metadata.getDeclaredAnnotation("Deprecated");
                     ReflectionUtils.getWrapperType(int.class);

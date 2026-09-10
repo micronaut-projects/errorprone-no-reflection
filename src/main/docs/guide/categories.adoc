@@ -46,7 +46,7 @@ Method method = executableMethod.getTargetMethod();
 
 == REFLECTION_UTILS
 
-Micronaut's helpers look members up, read and write fields and invoke methods reflectively. Only the table that maps primitive types to their wrappers and back, which reaches for nothing, is left out.
+Micronaut's helpers look members up, read and write fields and invoke methods reflectively. Left out are the ones that reach for nothing: the table that maps primitive types to their wrappers and back, the check of a setter's name, and the building of an error message.
 
 [source,java]
 ----
@@ -58,14 +58,14 @@ Method method = ReflectionUtils.getRequiredMethod(type, "name");
 |Declared by |Methods |Call pattern
 
 |`io.micronaut.core.reflect.ReflectionUtils`
-|Every method but `getWrapperType`, `getPrimitiveType`
-|`io.micronaut.core.reflect.ReflectionUtils#*-getWrapperType\|getPrimitiveType`
+|Every method but `getWrapperType`, `getPrimitiveType`, `isSetter`, `newNoSuchMethodError`
+|`io.micronaut.core.reflect.ReflectionUtils#*-getWrapperType\|getPrimitiveType\|isSetter\|newNoSuchMethodError`
 
 |===
 
 == BEANS
 
-The JavaBeans introspector reads every public method of a class to find its properties, and descriptors, statements, encoders and event handlers look methods up and invoke them by name.
+The JavaBeans introspector reads every public method of a class to find its properties, and descriptors, statements, encoders and event handlers look methods up and invoke them by name. What only handles names or caches, such as `Introspector.decapitalize`, is not reported.
 
 [source,java]
 ----
@@ -77,8 +77,8 @@ BeanInfo info = Introspector.getBeanInfo(type);
 |Declared by |Methods |Call pattern
 
 |`java.beans.Introspector`
-|Every method and constructor
-|`java.beans.Introspector#*`
+|`getBeanInfo`
+|`java.beans.Introspector#getBeanInfo`
 
 |`java.beans.Beans`
 |`instantiate`, `isInstanceOf`, `getInstanceOf`
@@ -105,8 +105,8 @@ BeanInfo info = Introspector.getBeanInfo(type);
 |`java.beans.EventSetDescriptor#getAddListenerMethod\|getRemoveListenerMethod\|getGetListenerMethod\|getListenerMethods`
 
 |`java.beans.EventHandler`
-|Every method and constructor
-|`java.beans.EventHandler#*`
+|`create`, `invoke`
+|`java.beans.EventHandler#create\|invoke`
 
 |`java.beans.Encoder` and every subtype of it
 |`writeObject`, `writeStatement`, `writeExpression`, `getPersistenceDelegate`
@@ -128,7 +128,7 @@ BeanInfo info = Introspector.getBeanInfo(type);
 
 == SERIALIZATION
 
-Java serialization reads the fields, constructors and private `readObject` and `writeObject` methods of every class it meets, and needs serialization metadata in a native image.
+Java serialization reads the fields, constructors and private `readObject` and `writeObject` methods of every class it meets, loads the classes a stream names, and needs serialization metadata in a native image.
 
 [source,java]
 ----
@@ -140,8 +140,8 @@ Object value = objectInputStream.readObject();
 |Declared by |Methods |Call pattern
 
 |`java.io.ObjectInputStream` and every subtype of it
-|`readObject`, `readUnshared`, `defaultReadObject`, `readFields`
-|`java.io.ObjectInputStream+#readObject\|readUnshared\|defaultReadObject\|readFields`
+|`readObject`, `readUnshared`, `defaultReadObject`, `readFields`, `resolveClass`, `resolveProxyClass`
+|`java.io.ObjectInputStream+#readObject\|readUnshared\|defaultReadObject\|readFields\|resolveClass\|resolveProxyClass`
 
 |`java.io.ObjectOutputStream` and every subtype of it
 |`writeObject`, `writeUnshared`, `defaultWriteObject`, `putFields`, `writeFields`
@@ -439,7 +439,7 @@ Class<?>[] interfaces = type.getInterfaces();
 
 == GENERIC_SIGNATURES
 
-A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name.
+A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name - which is why every method of a generic type is reported too.
 
 [source,java]
 ----
@@ -568,11 +568,11 @@ Method[] methods = type.getDeclaredMethods();
 
 == REFLECTIVE_ACCESS
 
-Reaching a member once it is found - invoking a method, reading or writing a field, creating an instance - makes and keeps an accessor for it, and `setAccessible` and `Module.addOpens` break encapsulation to allow it.
+Reaching a member once it is found - invoking a method, reading or writing the value of a field, creating an instance - makes and keeps an accessor for it, and `setAccessible` and `Module.addOpens` break encapsulation to allow it. Reading the name, type or modifiers of a member already at hand is not reported.
 
 [source,java]
 ----
-Object result = method.invoke(target);
+Object value = field.get(target);
 ----
 
 [cols="3,4,4"]
@@ -592,8 +592,8 @@ Object result = method.invoke(target);
 |`java.lang.reflect.Method#invoke`
 
 |`java.lang.reflect.Field`
-|Every method and constructor
-|`java.lang.reflect.Field#*`
+|`get`, `getBoolean`, `getByte`, `getChar`, `getShort`, `getInt`, `getLong`, `getFloat`, `getDouble`, `set`, `setBoolean`, `setByte`, `setChar`, `setShort`, `setInt`, `setLong`, `setFloat`, `setDouble`
+|`java.lang.reflect.Field#get\|getBoolean\|getByte\|getChar\|getShort\|getInt\|getLong\|getFloat\|getDouble\|set\|setBoolean\|setByte\|setChar\|setShort\|setInt\|setLong\|setFloat\|setDouble`
 
 |`java.lang.reflect.Array`
 |Every method and constructor

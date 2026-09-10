@@ -34,7 +34,6 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -70,6 +69,7 @@ public class NoReflectionPlugin implements Plugin<Project> {
         extension.getForbidAll().convention(false);
         extension.getSeverity().convention(CheckSeverity.ERROR);
         extension.getCheckedSourceSets().convention(Set.of(SourceSet.MAIN_SOURCE_SET_NAME));
+        extension.getCheckedTasks().convention(Set.of());
         extension.getCheckTests().convention(false);
         extension.getErrorProneVersion().convention(versions.getProperty("errorProne"));
 
@@ -86,7 +86,8 @@ public class NoReflectionPlugin implements Plugin<Project> {
         String taskName = task.getName();
         Provider<Boolean> checked = project.provider(() ->
             checked(project.getExtensions().findByType(SourceSetContainer.class), taskName, extension));
-        errorProne.getChecks().put("NoReflection", checked.zip(extension.getSeverity(), (on, severity) -> on ? severity : CheckSeverity.OFF));
+        Provider<CheckSeverity> severity = extension.getSeverity().map(NoReflectionPlugin::validSeverity);
+        errorProne.getChecks().put("NoReflection", checked.zip(severity, (on, chosen) -> on ? chosen : CheckSeverity.OFF));
         errorProne.getCheckOptions().putAll(project.provider(() -> options(extension)));
     }
 
@@ -101,8 +102,16 @@ public class NoReflectionPlugin implements Plugin<Project> {
                 }
             }
         }
-        // a compilation that belongs to no source set is checked, unless it compiles tests
-        return !taskName.toLowerCase(Locale.ROOT).contains("test");
+        // a compilation that belongs to no source set is checked when the build names it
+        return extension.getCheckedTasks().get().contains(taskName);
+    }
+
+    // the property takes any severity ErrorProne knows, of which OFF and DEFAULT would quietly turn the check off
+    private static CheckSeverity validSeverity(CheckSeverity severity) {
+        if (severity != CheckSeverity.ERROR && severity != CheckSeverity.WARN) {
+            throw new GradleException("noReflection: the severity is ERROR or WARN, not " + severity + ".");
+        }
+        return severity;
     }
 
     private static Map<String, String> options(NoReflectionExtension extension) {

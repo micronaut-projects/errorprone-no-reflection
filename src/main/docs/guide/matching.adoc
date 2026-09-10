@@ -54,8 +54,11 @@ String.valueOf(42);                                          // not an enum
 type.getName();                                              // read from the class file
 type.getSuperclass();
 method.getName();                                            // a member already looked up
+field.getType();
+ReflectionUtils.isSetter("setName", parameterTypes);          // checks a name
+Introspector.decapitalize("URL");
 ----
 
-Calling the methods of a `java.lang.reflect` object that is already at hand to read its name, modifiers or declared types is not reported: looking it up was.
+Reading the name, type, modifiers or declared types of a `java.lang.reflect` member that is already at hand is not reported: looking it up was. The generic and annotated types a member hands out are the exception - their methods resolve the classes and annotations they describe, and are reported as `GENERIC_SIGNATURES` and `ANNOTATIONS`.
 
 A class or method a project writes itself, wrapping any of the calls above, is not reported where it is called - the call inside it is. `NoReflection:ForbiddenCalls` reports such a wrapper's own callers too.

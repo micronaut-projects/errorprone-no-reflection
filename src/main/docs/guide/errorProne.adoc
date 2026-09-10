@@ -1,4 +1,4 @@
-The Gradle plugin applies the same https://github.com/tbroyer/gradle-errorprone-plugin[`net.ltgt.errorprone`] plugin a project may already use, so `NoReflection` runs in the same compilation as ErrorProne's built-in checks and any other plugin check, such as NullAway. The `noReflection` block only sets the severity and the `NoReflection:*` options of this check; everything the project configures in `options.errorprone` stays as it is.
+With the plugin repositories of the <<quickStart, Quick Start>> in the settings, the Gradle plugin applies the same https://github.com/tbroyer/gradle-errorprone-plugin[`net.ltgt.errorprone`] plugin a project may already use, so `NoReflection` runs in the same compilation as ErrorProne's built-in checks and any other plugin check, such as NullAway. The `noReflection` block only sets the severity and the `NoReflection:*` options of this check; everything the project configures in `options.errorprone` stays as it is.
 
 [source,kotlin]
 ----
@@ -17,7 +17,7 @@ repositories {
 
 dependencies {
     errorprone("com.google.errorprone:error_prone_core:2.50.0")
-    errorprone("com.uber.nullaway:nullaway:0.13.4")
+    errorprone("com.uber.nullaway:nullaway:0.14.1")
 }
 
 noReflection {
@@ -40,7 +40,7 @@ Without the Gradle plugin, the check is one more ErrorProne plugin on the proces
 ----
 dependencies {
     errorprone("com.google.errorprone:error_prone_core:2.50.0")
-    errorprone("com.uber.nullaway:nullaway:0.13.4")
+    errorprone("com.uber.nullaway:nullaway:0.14.1")
     errorprone("io.micronaut.errorprone:micronaut-errorprone-no-reflection:1.0.0")
 }
 
