@@ -1,0 +1,15 @@
+Unless the build says otherwise, a call with no alternative can be allowed with `@SuppressWarnings("NoReflection")`. On the local variable that holds what the platform returned, it leaves the rest of the method checked:
+
+[source,java]
+----
+public Method getMethod() {
+    // getMethod returns a java.lang.reflect.Method, which only the platform can produce
+    @SuppressWarnings("NoReflection")
+    Method target = context.getExecutableMethod().getTargetMethod();
+    return target;
+}
+----
+
+A suppression on the method or on a class reaches every call inside it, and `@SuppressWarnings("all")` suppresses the check too.
+
+The check decides suppression itself rather than leaving it to ErrorProne, so `NoReflection:Suppressible=false` stops honouring it for this check alone: every other ErrorProne check of the project, NullAway included, keeps honouring suppressions.

@@ -1,38 +1,25 @@
 # Repository Guidance
 
-This repository is the Micronaut template for generated module repositories. Keep root guidance short and update it when the template workflow changes.
+This repository publishes `micronaut-errorprone-no-reflection`, an ErrorProne check that reports reflection, and `micronaut-errorprone-no-reflection-gradle-plugin`, a Gradle plugin that applies and configures it. The Micronaut conventions prefix every artifact with `micronaut-`. It was created from `micronaut-project-template`; keep root guidance short.
 
 ## Repository Shape
 
-- `project-template/` is the generated module placeholder. Changes here should make sense after `template-cleanup.yml` renames it to `micronaut-<slug>/`.
-- `project-template-bom/` is the generated BOM placeholder. Keep dependency-management changes separate from module implementation changes when possible.
-- `buildSrc/src/main/groovy/io.micronaut.build.internal.project-template-*.gradle` contains template convention plugins that are also renamed by the cleanup workflow.
-- `.agents/skills/` is shared agent guidance. Skill changes are validated by `.github/workflows/skills-validation.yml`.
+- `errorprone-no-reflection/` is the `NoReflection` check: `ReflectionCategory` declares the categories and the flags, `ReflectionMatchers` the calls of each category as `CallPattern`s, `ReflectionPolicy` what a build allows, and `NoReflection` the check and its suppression.
+- `errorprone-no-reflection-gradle-plugin/` is `io.micronaut.errorprone.no-reflection`: `NoReflectionExtension` is the `noReflection` block and `NoReflectionPlugin` turns it into flags. Its TestKit specs live in `src/functionalTest` and compile against the check this build has just built.
+- `errorprone-no-reflection-bom/` is the BOM.
+- `buildSrc/src/main/groovy/io.micronaut.build.internal.errorprone-no-reflection-*.gradle` are the convention plugins.
+
+## Changing What Is Reported
+
+- A call belongs in `ReflectionMatchers`, under the category whose cache it fills or whose kind it is. Categories are tried in the order they are declared, so a call two of them name is reported under the first.
+- Every category has a sample in `NoReflectionTest.EVERY_CATEGORY`. A type javac warns about, such as `sun.misc.Unsafe`, must be named only on a line marked `// BUG: Diagnostic contains:`.
+- Keep `src/main/docs/guide/categories.adoc` in step with the categories, and `flags.adoc` and `gradlePlugin.adoc` with the flags and the `noReflection` block.
 
 ## Template And Sync Rules
 
-- Treat `.github/workflows/files-sync.yml` as the source of truth for files copied from this template to other Micronaut repositories.
-- Before editing synced files, check whether the file is copied by `files-sync.yml`, excluded by `.github/workflows/.rsync-filter`, or rewritten by `.github/workflows/template-cleanup.yml`.
-- `CONTRIBUTING.md` is rewritten by `template-cleanup.yml` when a repository is created from the template, but it is not copied by the recurring files-sync workflow. Existing downstream copies need repo-specific PRs.
-- Do not add project-specific assumptions to files that will be synced broadly unless the cleanup workflow rewrites them correctly for generated repositories.
-- When changing placeholder names, update every cleanup substitution and related file move in `.github/workflows/template-cleanup.yml`.
-
-## Contributing Guidelines
-
-- Before opening or updating a pull request, read this repository's `CONTRIBUTING.md` and follow every repo-specific PR requirement it names.
-- Treat contributor-checklist items as handoff requirements. If a requirement is not applicable, state that explicitly in the PR description or handoff note.
-- For UI-visible changes, confirm whether screenshots or other visual evidence are required and include them in the PR description; if screenshots cannot be provided, explain why and describe the verification that was performed.
-
-## Documentation
-
-- User guide sources live in `src/main/docs/guide`, with navigation in `src/main/docs/guide/toc.yml`.
-- Build guide output with `./gradlew publishGuide` or `./gradlew pG`; build guide plus Javadocs with `./gradlew docs`.
-- There are currently no `doc-examples/` snippets or shared docs images in this template. Prefer runnable snippets if examples are introduced.
-- Release-note behavior is maintained through `.github/release.yml`, `.github/workflows/release.yml`, and the release process documented in `MAINTAINING.md`.
+- Files copied by `micronaut-project-template`'s `files-sync.yml`, such as the workflows and `config/`, are changed in the template, not here.
 
 ## Verification
 
-- Use `./gradlew check` for general validation.
+- Use `./gradlew check` for checkstyle, the check's tests and the plugin's TestKit specs.
 - Use `./gradlew publishGuide` after guide or `toc.yml` changes.
-- Use `./gradlew docs` when API docs or release documentation output matters.
-- For `.agents/skills/**` changes, run the same validation as `skills-validation.yml` for the touched skill directories.

@@ -1,0 +1,4 @@
+The check sees the calls a project's source makes. Two kinds of code fill the same caches out of its sight:
+
+* Code the compiler writes: the bootstraps of lambdas, string concatenation, records and pattern switches.
+* The platform's own frameworks, which reach for reflection from inside `java.text`, `java.time`, `Locale`, security providers or the tree bins of a `HashMap`.

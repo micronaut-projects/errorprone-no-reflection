@@ -9,10 +9,11 @@ plugins {
     id 'io.micronaut.build.shared.settings' version '8.0.1'
 }
 
-rootProject.name = 'project-template-parent'
+rootProject.name = 'errorprone-no-reflection-parent'
 
-include 'project-template'
-include 'project-template-bom'
+include 'errorprone-no-reflection'
+include 'errorprone-no-reflection-gradle-plugin'
+include 'errorprone-no-reflection-bom'
 
 enableFeaturePreview 'TYPESAFE_PROJECT_ACCESSORS'
 

@@ -1,0 +1,12 @@
+plugins {
+    id 'io.micronaut.build.internal.errorprone-no-reflection-base'
+    // the conventions of a module without the Micronaut dependencies and processors of a Micronaut module: neither the
+    // check nor the plugin uses Micronaut, and a build that adds them should not receive it
+    id "io.micronaut.build.internal.base-module"
+}
+
+micronautBuild {
+    binaryCompatibility {
+        enabledAfter("1.0.0")
+    }
+}

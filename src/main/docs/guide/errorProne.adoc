@@ -1,0 +1,54 @@
+With the plugin repositories of the <<quickStart, Quick Start>> in the settings, the Gradle plugin applies the same https://github.com/tbroyer/gradle-errorprone-plugin[`net.ltgt.errorprone`] plugin a project may already use, so `NoReflection` runs in the same compilation as ErrorProne's built-in checks and any other plugin check, such as NullAway. The `noReflection` block only sets the severity and the `NoReflection:*` options of this check; everything the project configures in `options.errorprone` stays as it is.
+
+[source,kotlin]
+----
+import net.ltgt.gradle.errorprone.CheckSeverity
+import net.ltgt.gradle.errorprone.errorprone
+
+plugins {
+    java
+    id("net.ltgt.errorprone") version "5.1.1"
+    id("io.micronaut.errorprone.no-reflection") version "1.0.0"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    errorprone("com.google.errorprone:error_prone_core:2.50.0")
+    errorprone("com.uber.nullaway:nullaway:0.14.1")
+}
+
+noReflection {
+    allowIn("com.example.ReflectionAccess")
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.errorprone {
+        check("NullAway", CheckSeverity.ERROR)
+        option("NullAway:AnnotatedPackages", "com.example")
+    }
+}
+----
+
+A compilation then fails on both a reflective call outside `com.example.ReflectionAccess` and a null returned where NullAway forbids it. The ErrorProne the plugin adds and the one the project declares are resolved like any other dependency, to the higher of the two versions.
+
+Without the Gradle plugin, the check is one more ErrorProne plugin on the processor path, configured with its <<flags, flags>> beside the options of the others:
+
+[source,kotlin]
+----
+dependencies {
+    errorprone("com.google.errorprone:error_prone_core:2.50.0")
+    errorprone("com.uber.nullaway:nullaway:0.14.1")
+    errorprone("io.micronaut.errorprone:micronaut-errorprone-no-reflection:1.0.0")
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.errorprone {
+        check("NullAway", CheckSeverity.ERROR)
+        option("NullAway:AnnotatedPackages", "com.example")
+        option("NoReflection:AllowedIn", "com.example.ReflectionAccess")
+    }
+}
+----

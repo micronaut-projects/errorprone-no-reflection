@@ -1,0 +1,22 @@
+The check reads what a project allows and forbids from ErrorProne flags, `-XepOpt:<flag>=<value>`. The Gradle plugin sets them from its `noReflection` block.
+
+|===
+|Flag |Value
+
+|`NoReflection:Allowed`
+|The categories allowed throughout the project, separated by commas
+
+|`NoReflection:AllowedCalls`
+|The <<calls, calls>> allowed throughout the project, separated by commas
+
+|`NoReflection:AllowedIn`
+|The classes and packages reflection is allowed in, as <<calls, scopes>> separated by commas
+
+|`NoReflection:ForbiddenCalls`
+|The calls reported as `CUSTOM`, separated by commas
+
+|`NoReflection:Suppressible`
+|`false` to honour no `@SuppressWarnings("NoReflection")`
+|===
+
+A call is reported when it belongs to a category or to a call the build forbids, unless its category is allowed throughout the project, the call itself is, or it is made in a class or a package where its category is.
