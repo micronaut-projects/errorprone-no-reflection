@@ -1,0 +1,61 @@
+A call is matched by the method or the constructor the compiler resolved it to - the class that declares it and its name - and not by how the source spells it. So the check reports the same call however it is written:
+
+[source,java]
+----
+import static java.lang.Class.forName;
+
+class Subject {
+
+    static final Object FIELDS = Subject.class.getDeclaredFields();             // CLASS_MEMBERS, in a field initializer
+
+    Supplier<Object> later = () -> Subject.class.getDeclaredMethods();          // CLASS_MEMBERS, in a lambda
+
+    Function<Class<?>, String> names = Class::getSimpleName;                    // CLASS_NAMES, a method reference
+
+    Function<Class<Colour>, EnumMap<Colour, String>> maps = EnumMap::new;       // ENUM_CONSTANTS, a constructor reference
+
+    static {
+        Subject.class.getInterfaces();                                          // INTERFACES, in an initializer
+    }
+
+    static class Colours extends EnumMap<Colour, String> {
+        Colours() {
+            super(Colour.class);                                                // ENUM_CONSTANTS, a super call
+        }
+    }
+
+    static class Loader extends ClassLoader {
+        Class<?> load(String name) throws ClassNotFoundException {
+            return loadClass(name);                                             // CLASS_LOADING, inherited
+        }
+    }
+
+    void write(Method method, Loader loader, MethodType type) throws Exception {
+        forName("com.example.Plugin");                                          // CLASS_LOADING, a static import
+        new EnumMap<Colour, String>(Colour.class);                              // ENUM_CONSTANTS, a constructor
+        new EnumMap<Colour, String>(Colour.class) { };                          // ENUM_CONSTANTS, an anonymous subclass
+        new MutableCallSite(type) { };                                          // HANDLES
+        method.getAnnotation(Deprecated.class);                                 // ANNOTATIONS, declared by a subtype
+        loader.loadClass("com.example.Plugin");                                 // CLASS_LOADING, through a subclass
+    }
+}
+----
+
+A call is reported in any class, nested, local or anonymous, and in any method, constructor, initializer or lambda.
+
+What decides is what the call resolved to, so a method of the same name on another type is not reported:
+
+[source,java]
+----
+annotationMetadata.getAnnotation("jakarta.inject.Named");    // Micronaut's compiled metadata
+ReflectionUtils.getWrapperType(int.class);                   // a table compiled into the class
+Colour.values();                                             // the array the compiler writes for the enum
+String.valueOf(42);                                          // not an enum
+type.getName();                                              // read from the class file
+type.getSuperclass();
+method.getName();                                            // a member already looked up
+----
+
+Calling the methods of a `java.lang.reflect` object that is already at hand to read its name, modifiers or declared types is not reported: looking it up was.
+
+A class or method a project writes itself, wrapping any of the calls above, is not reported where it is called - the call inside it is. `NoReflection:ForbiddenCalls` reports such a wrapper's own callers too.

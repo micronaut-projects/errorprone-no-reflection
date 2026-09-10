@@ -22,8 +22,10 @@ import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -173,6 +175,17 @@ final class ReflectionMatchers {
     }
 
     /**
+     * @return The calls of each category as the patterns they are written as, in the order they are tried
+     */
+    static Map<ReflectionCategory, List<String>> patterns() {
+        Map<ReflectionCategory, List<String>> patterns = new EnumMap<>(ReflectionCategory.class);
+        for (Rule rule : RULES) {
+            patterns.computeIfAbsent(rule.category(), category -> new ArrayList<>()).add(rule.pattern().toString());
+        }
+        return patterns;
+    }
+
+    /**
      * @param method The method, or constructor, a call or a reference resolved to
      * @param state  The state
      * @return The category the method belongs to, or {@code null} when it belongs to none
@@ -199,6 +212,10 @@ final class ReflectionMatchers {
         Symbol.ClassSymbol owner = method.enclClass();
         if (owner == null) {
             return false;
+        }
+        // an anonymous class is created through the constructor of the class it extends, which its body cannot hide
+        if (method.isConstructor() && owner.isAnonymous() && owner.getSuperclass().tsym instanceof Symbol.ClassSymbol superclass) {
+            owner = superclass;
         }
         return switch (pattern.ownerMatch()) {
             case EXACT -> names(pattern, owner);

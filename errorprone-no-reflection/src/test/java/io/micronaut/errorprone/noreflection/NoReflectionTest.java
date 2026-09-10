@@ -226,6 +226,65 @@ class NoReflectionTest {
             """).doTest();
     }
 
+    /**
+     * The ways a call is written: a static import, a method or constructor reference, the constructor of an anonymous
+     * subclass or a super call, a call through a subtype or from a subclass, and wherever the code sits.
+     */
+    @Test
+    void reportsACallHoweverItIsWritten() {
+        helper().addSourceLines("Subject.java", """
+            import static java.lang.Class.forName;
+            import java.lang.invoke.MethodType;
+            import java.lang.invoke.MutableCallSite;
+            import java.util.EnumMap;
+            import java.util.function.Function;
+            import java.util.function.Supplier;
+            class Subject {
+                enum Colour { RED }
+                // BUG: Diagnostic contains: [CLASS_MEMBERS]
+                static final Object FIELDS = Subject.class.getDeclaredFields();
+                // BUG: Diagnostic contains: [CLASS_MEMBERS]
+                Supplier<Object> later = () -> Subject.class.getDeclaredMethods();
+                static {
+                    // BUG: Diagnostic contains: [CLASS_NAMES]
+                    Subject.class.getSimpleName();
+                }
+                static class Colours extends EnumMap<Colour, String> {
+                    Colours() {
+                        // BUG: Diagnostic contains: [ENUM_CONSTANTS]
+                        super(Colour.class);
+                    }
+                }
+                static class Loader extends ClassLoader {
+                    Class<?> load(String name) throws ClassNotFoundException {
+                        // BUG: Diagnostic contains: [CLASS_LOADING]
+                        return loadClass(name);
+                    }
+                }
+                // BUG: Diagnostic contains: [ENUM_CONSTANTS]
+                Function<Class<Colour>, EnumMap<Colour, String>> maps = EnumMap::new;
+                void write(MethodType type, java.lang.reflect.Method method, Loader loader) throws Exception {
+                    // BUG: Diagnostic contains: [CLASS_LOADING]
+                    forName("java.lang.String");
+                    // BUG: Diagnostic contains: [ENUM_CONSTANTS]
+                    new EnumMap<Colour, String>(Colour.class) { };
+                    // BUG: Diagnostic contains: [HANDLES]
+                    new MutableCallSite(type) { };
+                    // BUG: Diagnostic contains: [ANNOTATIONS]
+                    method.getAnnotation(Deprecated.class);
+                    // BUG: Diagnostic contains: [CLASS_LOADING]
+                    loader.loadClass("java.lang.String");
+                    Runnable local = new Runnable() {
+                        public void run() {
+                            // BUG: Diagnostic contains: [INTERFACES]
+                            Subject.class.getInterfaces();
+                        }
+                    };
+                }
+            }
+            """).doTest();
+    }
+
     /** Every part of java.lang.invoke, with the bootstraps and resolution that lead to it, but its exceptions. */
     @Test
     void reportsAllOfJavaLangInvoke() {

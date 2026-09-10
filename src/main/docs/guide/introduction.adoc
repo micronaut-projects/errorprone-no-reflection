@@ -10,3 +10,14 @@ Subject.java:12: error: [NoReflection] Reflection is not allowed here [CLASS_NAM
 ----
 
 A call is matched by the method the compiler resolved it to, not by its name: `Class.getAnnotation` asks the platform, `AnnotationMetadata.getAnnotation` reads what Micronaut compiled, and only the first is reported.
+
+== What It Aims At
+
+Micronaut works out at compile time what other frameworks look up by reflection at run time, and code built on it can do without reflection altogether. Reflection costs even when it is reached for once: the virtual machine creates and keeps, for every class it is asked about, the reflection data of its members, names and interfaces, its enum constants, generic signature and annotations, and the accessors of the members that are called; it loads classes by name and defines proxy classes; and a native image needs reachability metadata for every one of them.
+
+The check makes "no reflection" something the compiler enforces rather than a convention to keep. It aims to:
+
+* Report every call whose purpose is reflection, including the ones that do not look like it - `Class.getSimpleName`, `Enum.valueOf`, `EnumSet.noneOf` and the `valueOf(String)` of every enum fill a cache as surely as `getDeclaredMethods` does - and all of `java.lang.invoke`.
+* Say what kind of reflection a call is, so that a report tells what it costs and a build can allow one kind without allowing the others.
+* Let a codebase get there gradually: allow the categories it cannot do without yet, confine what remains to the classes or packages that need it, and report as warnings before failing the build.
+* Keep exceptions honest: a suppression belongs on the variable holding what the platform returned, and a build can refuse suppressions altogether.

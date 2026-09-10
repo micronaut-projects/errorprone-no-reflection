@@ -372,6 +372,71 @@ class NoReflectionPluginFunctionalTest extends Specification {
         reportsAt 'src/tools/java/demo/Tool.java', 'getDeclaredMethods'
     }
 
+    void "runs beside the project's own ErrorProne checks and options"() {
+        given:
+        file('settings.gradle').text = "rootProject.name = 'demo'"
+        file('build.gradle').text = """
+            import net.ltgt.gradle.errorprone.CheckSeverity
+
+            plugins {
+                id 'java'
+                id 'net.ltgt.errorprone'
+                id 'io.micronaut.errorprone.no-reflection'
+            }
+
+            repositories {
+                mavenCentral()
+            }
+
+            configurations.errorprone.withDependencies { dependencies ->
+                dependencies.removeIf { it.group == 'io.micronaut.errorprone' && it.name == 'micronaut-errorprone-no-reflection' }
+            }
+
+            dependencies {
+                errorprone files('${CHECKS}')
+                errorprone 'com.google.errorprone:error_prone_core:${ERROR_PRONE_VERSION}'
+                errorprone 'com.uber.nullaway:nullaway:0.13.4'
+            }
+
+            noReflection {
+                allowIn 'demo.ReflectionAccess'
+            }
+
+            tasks.withType(JavaCompile).configureEach {
+                options.errorprone {
+                    check('NullAway', CheckSeverity.ERROR)
+                    option('NullAway:AnnotatedPackages', 'demo')
+                }
+            }
+        """
+        javaFile REFLECTION_ACCESS, '''
+            package demo;
+
+            final class ReflectionAccess {
+                static Object methods(Class<?> type) {
+                    return type.getDeclaredMethods();
+                }
+            }
+        '''
+        mainSubject '''
+            Object members(Class<?> type) {
+                return type.getDeclaredFields();
+            }
+
+            String name() {
+                return null;
+            }
+        '''
+
+        when:
+        fails 'compileJava'
+
+        then:
+        reportsAt SUBJECT, 'getDeclaredFields'
+        !reportsAt(REFLECTION_ACCESS, 'getDeclaredMethods')
+        reported '[NullAway]'
+    }
+
     void "can be configured from the Kotlin DSL"() {
         given:
         file('settings.gradle.kts').text = 'rootProject.name = "demo"'

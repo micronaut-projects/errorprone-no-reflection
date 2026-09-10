@@ -2,11 +2,13 @@ introduction:
   title: Introduction
 quickStart:
   title: Quick Start
-categories: Categories
+categories: What Is Reported
+matching: How Calls Are Matched
 flags: ErrorProne Flags
 calls: Calls and Scopes
 suppression: Suppression
 gradlePlugin: Gradle Plugin
+errorProne: With ErrorProne's Own Checks
 limitations: What the Check Cannot See
 repository: Repository
 releaseHistory: Release History
