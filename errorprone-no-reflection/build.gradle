@@ -1,0 +1,41 @@
+plugins {
+    id 'io.micronaut.build.internal.errorprone-no-reflection-module'
+}
+
+description = 'An ErrorProne check that reports reflection, and the calls that fill the reflection caches of the virtual machine'
+
+dependencies {
+    compileOnly libs.error.prone.core
+    compileOnly libs.auto.service.annotations
+    annotationProcessor libs.auto.service.processor
+
+    testImplementation libs.error.prone.core
+    testImplementation libs.error.prone.test.helpers
+    // the tests drive the compiler through JUnit Jupiter, whose versions the Micronaut BOM manages
+    testImplementation 'org.junit.jupiter:junit-jupiter-api'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// a check is written against the compiler of the platform, whose packages are not exported, and its tests run that
+// compiler in the test's own process
+def compilerPackages = ['api', 'code', 'comp', 'file', 'main', 'model', 'parser', 'processing', 'tree', 'util']
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.addAll(compilerPackages.collectMany {
+        ['--add-exports', "jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString()]
+    })
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addMultilineStringsOption('-add-exports').value = compilerPackages.collect {
+        "jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString()
+    }
+}
+
+tasks.withType(Test).configureEach {
+    jvmArgs(compilerPackages.collectMany {
+        ["--add-exports=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString(),
+         "--add-opens=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString()]
+    })
+}

@@ -1,0 +1,65 @@
+A call is reported under the first category, in this order, that it belongs to. The Micronaut categories and the Micronaut types named in the others match nothing in a project without Micronaut.
+
+|===
+|Category |What it reports
+
+|`ANNOTATION_SYNTHESIS`
+|`synthesize` and its siblings on Micronaut's annotation metadata, which define a proxy class
+
+|`TARGET_MEMBERS`
+|Micronaut's `MethodReference.getTargetMethod` and `FieldInjectionPoint.getField`
+
+|`REFLECTION_UTILS`
+|Micronaut's `ReflectionUtils`, but for its primitive and wrapper type table
+
+|`BEANS`
+|`java.beans`: `Introspector`, feature descriptors, `Statement`, `Expression`, encoders, `EventHandler`
+
+|`SERIALIZATION`
+|`ObjectInputStream.readObject`, `ObjectOutputStream.writeObject`, `ObjectStreamClass.lookup` and the like
+
+|`UNSAFE`
+|`sun.misc.Unsafe` and `sun.reflect.ReflectionFactory`
+
+|`INSTRUMENTATION`
+|`java.lang.instrument.Instrumentation`
+
+|`PROXY`
+|`java.lang.reflect.Proxy`, `MethodHandleProxies` and `InvocationHandler.invokeDefault`
+
+|`HANDLES`
+|All of `java.lang.invoke` but its exceptions, the bootstraps of `java.lang.runtime`, `ConstantDesc.resolveConstantDesc` and the handles of `java.lang.foreign.Linker`
+
+|`SERVICE_LOADING`
+|`ServiceLoader`, and Micronaut's `SoftServiceLoader`
+
+|`CLASS_LOADING`
+|`Class.forName`, a `ClassLoader`, module layers, `ResourceBundle.getBundle`, and Micronaut's `ClassUtils.forName`
+
+|`FIELD_UPDATERS`
+|`AtomicReferenceFieldUpdater`, `AtomicIntegerFieldUpdater` and `AtomicLongFieldUpdater`
+
+|`ENUM_CONSTANTS`
+|`Class.getEnumConstants`, `Enum.valueOf`, the `valueOf(String)` of every enum, `EnumSet` and `EnumMap`
+
+|`CLASS_NAMES`
+|`Class.getSimpleName` and `Class.getCanonicalName`, which fill the reflection data of the class
+
+|`INTERFACES`
+|`Class.getInterfaces`, which fills the reflection data of the class
+
+|`GENERIC_SIGNATURES`
+|Generic superclasses, interfaces, type parameters and member types, and Micronaut's `GenericTypeUtils`
+
+|`ANNOTATIONS`
+|Annotations read from a class, a member, a parameter or a type use
+
+|`CLASS_MEMBERS`
+|Methods, constructors, fields, record components, nested classes, enclosing method and parameters looked up
+
+|`REFLECTIVE_ACCESS`
+|`setAccessible`, `Method.invoke`, `Field`, `Constructor.newInstance`, `Array`, `Module.addOpens`, and Micronaut's `InstantiationUtils`
+
+|`CUSTOM`
+|The calls a project forbids itself
+|===

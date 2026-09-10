@@ -1,0 +1,40 @@
+A call is a type, a type followed by `+` to take in its subtypes, or a package followed by `.*`; then `#` and the name of a method, names separated by `|`, `<init>` for the constructors, or `*` for any member, optionally followed by `-` and the members left out.
+
+|===
+|Call |What it names
+
+|`java.lang.Class#getSimpleName\|getCanonicalName`
+|Either method of the class, whatever its parameters
+
+|`java.util.EnumMap#<init>`
+|The constructors of the class
+
+|`java.util.EnumSet#*`, or `java.util.EnumSet`
+|Any method or constructor of the class
+
+|`java.lang.reflect.AnnotatedElement+#getAnnotation`
+|The method declared by the type or by any subtype of it
+
+|`io.micronaut.core.reflect.ReflectionUtils#*-getWrapperType`
+|Any member but the one left out
+
+|`com.example.internal.*#*`
+|Any member of a type of the package, or of a package below it
+|===
+
+A nested type is written either way, `java.util.ServiceLoader.Provider` or `java.util.ServiceLoader$Provider`.
+
+A scope is a class, or a package followed by `.*`, optionally followed by `:` and the only categories allowed there, separated by `+`. A class takes in the classes and lambdas nested in it, and a package the packages below it.
+
+|===
+|Scope |Where reflection is allowed
+
+|`com.example.ReflectionAccess`
+|Any category, in the class
+
+|`com.example.internal.*`
+|Any category, in the package and the packages below it
+
+|`com.example.Handles:HANDLES+PROXY`
+|Only those categories, in the class
+|===

@@ -1,1 +1,39 @@
-TODO
+The simplest way to use the check is the Gradle plugin, which applies ErrorProne and adds the check to the project:
+
+[source,kotlin]
+----
+plugins {
+    java
+    id("io.micronaut.errorprone.no-reflection") version "1.0.0"
+}
+----
+
+Every category is then reported in the main source set. See <<gradlePlugin, Gradle Plugin>> for what a project can allow.
+
+The check is also an ErrorProne plugin of its own, which only has to be on the processor path and is configured with <<flags, flags>>:
+
+[source,kotlin]
+----
+plugins {
+    java
+    id("net.ltgt.errorprone") version "5.1.1"
+}
+
+dependencies {
+    errorprone("com.google.errorprone:error_prone_core:2.50.0")
+    errorprone("io.micronaut.errorprone:micronaut-errorprone-no-reflection:1.0.0")
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.errorprone {
+        option("NoReflection:Allowed", "ENUM_CONSTANTS,CLASS_NAMES")
+    }
+}
+----
+
+With Maven, add `micronaut-errorprone-no-reflection` to the `annotationProcessorPaths` next to `error_prone_core`, and the flags to the `-Xplugin:ErrorProne` argument, as the https://errorprone.info/docs/installation[ErrorProne installation guide] describes:
+
+[source,xml]
+----
+<arg>-Xplugin:ErrorProne -XepOpt:NoReflection:Allowed=ENUM_CONSTANTS</arg>
+----

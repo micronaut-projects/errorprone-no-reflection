@@ -1,0 +1,21 @@
+The `io.micronaut.errorprone.no-reflection` plugin applies https://github.com/tbroyer/gradle-errorprone-plugin[`net.ltgt.errorprone`], adds ErrorProne and the check to the project, and turns the `noReflection` block into the check's <<flags, flags>>.
+
+[source,kotlin]
+----
+noReflection {
+    allow("ENUM_CONSTANTS", "CLASS_NAMES")             // categories allowed throughout the project
+    allowCalls("java.lang.Class#getSimpleName")        // calls allowed throughout the project
+    allowIn("com.example.ReflectionAccess")            // any reflection in a class
+    allowIn("com.example.handles.*", "HANDLES")        // some categories in a package and the packages below it
+    forbid("com.example.LegacyReflector#*")            // the project's own reflective helpers, reported as CUSTOM
+
+    suppressible = false                               // honour no @SuppressWarnings("NoReflection")
+    forbidAll()                                        // allow nothing outside allowIn, and honour no suppression
+    severity("WARN")                                   // report without failing the compilation, ERROR by default
+    checkedSourceSets = setOf("main", "integration")   // the source sets checked, main by default
+    checkTests = true                                  // check every source set
+    errorProneVersion = "2.50.0"                       // the ErrorProne the plugin adds
+}
+----
+
+Every category is reported by default. Naming the same scope in `allowIn` again adds to the categories allowed there. `forbidAll()` together with `allow` or `allowCalls` is refused, and so are an unknown category, a malformed call or scope, and a severity other than `ERROR` or `WARN`.

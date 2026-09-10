@@ -1,1 +1,12 @@
-TODO
+`errorprone-no-reflection` is an https://errorprone.info[ErrorProne] check, `NoReflection`, that reports reflection: a call, a method reference or a constructor that reaches for it. It is meant for code that has to do without reflection - to keep the virtual machine from filling the caches it keeps for a class, or to need no reachability metadata in a native image - and it can be told exactly what a project allows, and where.
+
+Each report names the category the call belongs to. Most categories are a cache the virtual machine fills for a class or a member when it is asked for them - the reflection data of a class, its enum constants, generic signature and annotations, the accessors of its members; the others load, define or proxy classes, or reach members by name.
+
+[source]
+----
+Subject.java:12: error: [NoReflection] Reflection is not allowed here [CLASS_NAMES]
+        String name = type.getSimpleName();
+                                        ^
+----
+
+A call is matched by the method the compiler resolved it to, not by its name: `Class.getAnnotation` asks the platform, `AnnotationMetadata.getAnnotation` reads what Micronaut compiled, and only the first is reported.

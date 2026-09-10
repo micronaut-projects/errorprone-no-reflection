@@ -1,0 +1,10 @@
+plugins {
+    id 'io.micronaut.build.internal.errorprone-no-reflection-base'
+    id "io.micronaut.build.internal.module"
+}
+
+micronautBuild {
+    binaryCompatibility {
+        enabledAfter("1.0.0")
+    }
+}

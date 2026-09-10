@@ -2,5 +2,11 @@ introduction:
   title: Introduction
 quickStart:
   title: Quick Start
+categories: Categories
+flags: ErrorProne Flags
+calls: Calls and Scopes
+suppression: Suppression
+gradlePlugin: Gradle Plugin
+limitations: What the Check Cannot See
 repository: Repository
 releaseHistory: Release History

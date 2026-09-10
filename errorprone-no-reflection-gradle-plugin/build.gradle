@@ -1,0 +1,99 @@
+plugins {
+    // applied before java-gradle-plugin, so that the jar is published as the "maven" publication the Micronaut
+    // conventions sign, describe and check, rather than as java-gradle-plugin's own
+    id 'io.micronaut.build.internal.errorprone-no-reflection-module'
+    id 'java-gradle-plugin'
+}
+
+description = 'A Gradle plugin that applies the errorprone-no-reflection check and configures what a project allows'
+
+repositories {
+    // the ErrorProne Gradle plugin is published to the Gradle Plugin Portal, not to Maven Central
+    gradlePluginPortal()
+}
+
+sourceSets {
+    functionalTest
+}
+
+configurations {
+    // the check a fixture compiles with: the one this build has just built, handed to the tests as a jar
+    checksJar {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
+}
+
+dependencies {
+    // the categories, calls and scopes a project writes are the check's own, so the two cannot disagree on a name
+    implementation projects.errorproneNoReflection
+    implementation libs.errorprone.gradle.plugin
+
+    checksJar projects.errorproneNoReflection
+
+    functionalTestImplementation libs.spock.core
+    functionalTestImplementation gradleTestKit()
+    functionalTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+gradlePlugin {
+    plugins {
+        noReflection {
+            id = 'io.micronaut.errorprone.no-reflection'
+            implementationClass = 'io.micronaut.errorprone.noreflection.gradle.NoReflectionPlugin'
+            displayName = 'ErrorProne No Reflection'
+            description = 'Reports reflection with ErrorProne, except where a project allows it'
+        }
+    }
+    testSourceSets sourceSets.functionalTest
+    automatedPublishing = false
+}
+
+// the marker that lets plugins { id 'io.micronaut.errorprone.no-reflection' } find the plugin in a Maven repository,
+// which java-gradle-plugin would publish itself were its publishing not left to the Micronaut conventions
+publishing {
+    publications {
+        noReflectionPluginMarker(MavenPublication) {
+            groupId = 'io.micronaut.errorprone.no-reflection'
+            artifactId = 'io.micronaut.errorprone.no-reflection.gradle.plugin'
+            pom.withXml {
+                def dependency = asNode().appendNode('dependencies').appendNode('dependency')
+                dependency.appendNode('groupId', project.group.toString())
+                // the artifact the Micronaut conventions publish the plugin as, prefixed with micronaut-
+                dependency.appendNode('artifactId', publishing.publications.maven.artifactId)
+                dependency.appendNode('version', project.version.toString())
+            }
+        }
+    }
+}
+
+// the plugin adds the check of its own version, and ErrorProne of the version it was built with
+def versions = tasks.register('versions', WriteProperties) {
+    destinationFile = layout.buildDirectory.file('generated/versions/io/micronaut/errorprone/noreflection/gradle/versions.properties')
+    property 'group', providers.provider { project.group.toString() }
+    property 'checks', providers.provider { project.version.toString() }
+    property 'errorProne', libs.versions.error.prone.get()
+}
+
+sourceSets.main.resources.srcDir(versions.map { layout.buildDirectory.dir('generated/versions').get() })
+
+def functionalTestTask = tasks.register('functionalTest', Test) {
+    description = 'Runs the plugin in Gradle builds of its own.'
+    group = 'verification'
+    testClassesDirs = sourceSets.functionalTest.output.classesDirs
+    classpath = sourceSets.functionalTest.runtimeClasspath
+    useJUnitPlatform()
+    def checks = configurations.checksJar
+    def errorProneVersion = libs.versions.error.prone.get()
+    inputs.files(checks).withPropertyName('checks').withNormalizer(ClasspathNormalizer)
+    jvmArgumentProviders.add({
+        ["-Dnoreflection.checks=${checks.singleFile.absolutePath}".toString(),
+         "-Dnoreflection.version=${project.version}".toString(),
+         "-Dnoreflection.errorProneVersion=${errorProneVersion}".toString()]
+    } as CommandLineArgumentProvider)
+}
+
+tasks.named('check') {
+    dependsOn functionalTestTask
+}
