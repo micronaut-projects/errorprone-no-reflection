@@ -1,1 +1,11 @@
-// If you don't need any common settings/dependencies/... for everything, remove this convention plugin and the reference to it in `io.micronaut.build.internal.errorprone-no-reflection-module.gradle` file
+repositories {
+    // the ErrorProne Gradle plugin is published to the Gradle Plugin Portal, not to Maven Central. It is declared here,
+    // before the Micronaut conventions apply java-library, because the binary compatibility check copies the repositories
+    // of a project at that moment to resolve the previous release, whose dependencies include the ErrorProne plugin
+    gradlePluginPortal {
+        content {
+            includeGroup 'net.ltgt.errorprone'
+            includeGroup 'net.ltgt.gradle'
+        }
+    }
+}
