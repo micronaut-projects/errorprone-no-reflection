@@ -1,3 +1,24 @@
 plugins {
     id "io.micronaut.build.internal.parent"
 }
+
+repositories {
+    // the aggregated javadoc resolves the dependencies of every module here, among them the ErrorProne Gradle plugin,
+    // which is published to the Gradle Plugin Portal rather than to Maven Central
+    gradlePluginPortal {
+        content {
+            includeGroup 'net.ltgt.errorprone'
+            includeGroup 'net.ltgt.gradle'
+        }
+    }
+}
+
+// the aggregated javadoc reads the sources of the check, written against the compiler of the platform, whose packages
+// are not exported: the same exports errorprone-no-reflection hands its own javadoc
+def compilerPackages = ['api', 'code', 'comp', 'file', 'main', 'model', 'parser', 'processing', 'tree', 'util']
+
+tasks.withType(Javadoc).configureEach {
+    options.addMultilineStringsOption('-add-exports').value = compilerPackages.collect {
+        "jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString()
+    }
+}

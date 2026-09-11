@@ -7,11 +7,6 @@ plugins {
 
 description = 'A Gradle plugin that applies the errorprone-no-reflection check and configures what a project allows'
 
-repositories {
-    // the ErrorProne Gradle plugin is published to the Gradle Plugin Portal, not to Maven Central
-    gradlePluginPortal()
-}
-
 sourceSets {
     functionalTest
 }
