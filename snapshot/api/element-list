@@ -1,0 +1,3 @@
+io.micronaut.errorprone.info
+io.micronaut.errorprone.noreflection
+io.micronaut.errorprone.noreflection.gradle

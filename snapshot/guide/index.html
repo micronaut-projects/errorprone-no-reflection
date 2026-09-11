@@ -1,0 +1,1673 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+    <title>ErrorProne No Reflection</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <link rel="stylesheet" href="../css/main.css" type="text/css" media="screen, print" title="Style" charset="utf-8" />
+    <link rel="stylesheet" href="../css/custom.css" type="text/css" media="screen, print" title="Style" charset="utf-8" />
+    <link rel="stylesheet" href="../css/pdf.css" type="text/css" media="print" title="PDF" charset="utf-8" />
+    <link rel="stylesheet" href="../css/highlight/agate.css">
+    <script src="../js/highlight.pack.js"></script>
+    <script src="../js/guide.js"></script>
+    <script src="../js/multi-language-sample.js"></script>
+    <script>hljs.initHighlightingOnLoad();</script>
+    <link rel="stylesheet" href="../css/multi-language-sample.css"/>
+    <script src="../js/docs.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.11/clipboard.min.js"></script>
+    <script type="text/javascript">
+        function addJsClass(el) {
+            var classes = document.body.className.split(" ");
+            classes.push("js");
+            document.body.className = classes.join(" ");
+        }
+    </script>
+    <style type="text/css">
+        .lang-java { display: block }; .lang-python { display: block }; .lang-kotlin { display: block }; .lang-groovy { display: block }; 
+    </style>
+</head>
+
+<body class="body" id="docs" onload="addJsClass();" onhashchange="highlightMenu()">
+
+<div id="table-of-content-nav-link" class="desktop">
+    <a id="theme-switcher" title="Switch to dark theme" href="javascript:switchTheme(true)"><i class="fa fa-moon-o"></i></a>
+    <a title="Collapse/Open Table of contents" title="Hide Table of Contents" href="javascript:hideTableOfContents();" class="button">[ + ]</a>
+</div>
+
+<div id="main">
+    <div id="navigation" class="no-print">
+        <div class="navTitle">
+            <span id="logo"><a href="http://micronaut.io" title="Go to Micronaut Website"><img src="../img/micronaut-logo-white.svg" alt="Micronaut"/></a></span>
+        </div>
+        <div class="navLinks">
+            <ul>
+                    <li><div id="nav-summary" onmouseover="toggleNavSummary(false)" onmouseout="toggleNavSummary(true)" class="desktop">
+                            <a href="../guide/index.html" class="button">Table of contents</a>
+                            <div id="nav-summary-childs" style="display:none;">
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#introduction"><strong>1</strong><span>Introduction</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#quickStart"><strong>2</strong><span>Quick Start</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#categories"><strong>3</strong><span>What Is Reported</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#matching"><strong>4</strong><span>How Calls Are Matched</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#flags"><strong>5</strong><span>ErrorProne Flags</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#calls"><strong>6</strong><span>Calls and Scopes</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#suppression"><strong>7</strong><span>Suppression</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#gradlePlugin"><strong>8</strong><span>Gradle Plugin</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#errorProne"><strong>9</strong><span>With ErrorProne's Own Checks</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#limitations"><strong>10</strong><span>What the Check Cannot See</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#repository"><strong>11</strong><span>Repository</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#releaseHistory"><strong>12</strong><span>Release History</span></a></div>
+                                
+                            </div>
+                        </div>
+                    </li>
+
+                <li id="table-of-content-nav-link-mobile" class="mobile">
+                    <a title="Scroll to Table of contents" href="javascript:scrollToTop();" class="button">Toc</a>
+                </li>
+                <li class="desktop">
+                    <a title="Go to API documentation" href="../api/index.html" class="button">API Reference</a>
+                </li>
+                <li class="mobile">
+                    <a title="Go to API documentation" href="../api/index.html" class="button">API</a>
+                </li>
+                <li class="desktop">
+                    <a title="Go to Configuration Reference documentation" href="../guide/configurationreference.html" class="button">Configuration Reference</a>
+                </li>
+                <li class="mobile">
+                    <a title="Go to Configuration Reference documentation" href="../guide/configurationreference.html" class="button">Conf</a>
+                </li>
+            </ul>
+
+        </div>
+    </div>
+    
+    <div id="table-of-content">
+        <div class="toc-content">
+
+        <h2>Table of Contents</h2>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-introduction"><a href="#introduction"><strong>1</strong><span>Introduction</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-quickStart"><a href="#quickStart"><strong>2</strong><span>Quick Start</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-categories"><a href="#categories"><strong>3</strong><span>What Is Reported</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-matching"><a href="#matching"><strong>4</strong><span>How Calls Are Matched</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-flags"><a href="#flags"><strong>5</strong><span>ErrorProne Flags</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-calls"><a href="#calls"><strong>6</strong><span>Calls and Scopes</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-suppression"><a href="#suppression"><strong>7</strong><span>Suppression</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-gradlePlugin"><a href="#gradlePlugin"><strong>8</strong><span>Gradle Plugin</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-errorProne"><a href="#errorProne"><strong>9</strong><span>With ErrorProne's Own Checks</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-limitations"><a href="#limitations"><strong>10</strong><span>What the Check Cannot See</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-repository"><a href="#repository"><strong>11</strong><span>Repository</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-releaseHistory"><a href="#releaseHistory"><strong>12</strong><span>Release History</span></a></div>
+        
+        </div>
+    </div>
+    
+    <div class="docs-content">
+    <div class="project">
+        <h1>ErrorProne No Reflection</h1>
+        <p></p>
+        <p>An ErrorProne check that reports reflection, and the calls that fill the reflection caches of the virtual machine</p>
+        <p><strong>Version:</strong> 1.0.2-SNAPSHOT </p>
+    </div>
+    
+<h1 id="introduction"><a class="anchor" href="#introduction"></a>1 Introduction</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/introduction.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p><code>errorprone-no-reflection</code> is an <a href="https://errorprone.info">ErrorProne</a> check, <code>NoReflection</code>, that reports reflection: a call, a method reference or a constructor that reaches for it. It is meant for code that has to do without reflection - to keep the virtual machine from filling the caches it keeps for a class, or to need no reachability metadata in a native image - and it can be told exactly what a project allows, and where.</p>
+</div>
+<div class="paragraph">
+<p>Each report names the category the call belongs to. Most categories are a cache the virtual machine fills for a class or a member when it is asked for them - the reflection data of a class, its enum constants, generic signature and annotations, the accessors of its members; the others load, define or proxy classes, or reach members by name.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-none hljs">Subject.java:12: error: [NoReflection] Reflection is not allowed here [CLASS_NAMES]
+        String name = type.getSimpleName();
+                                        ^</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>A call is matched by the method the compiler resolved it to, not by its name: <code>Class.getAnnotation</code> asks the platform, <code>AnnotationMetadata.getAnnotation</code> reads what Micronaut compiled, and only the first is reported.</p>
+</div>
+<div class="sect1">
+<h2 id="_what_it_aims_at">What It Aims At</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut works out at compile time what other frameworks look up by reflection at run time, and code built on it can do without reflection altogether. Reflection costs even when it is reached for once: the virtual machine creates and keeps, for every class it is asked about, the reflection data of its members, names and interfaces, its enum constants, generic signature and annotations, and the accessors of the members that are called; it loads classes by name and defines proxy classes; and a native image needs reachability metadata for every one of them.</p>
+</div>
+<div class="paragraph">
+<p>The check makes "no reflection" something the compiler enforces rather than a convention to keep. It aims to:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Report every call whose purpose is reflection, including the ones that do not look like it - <code>Class.getSimpleName</code>, <code>Enum.valueOf</code>, <code>EnumSet.noneOf</code> and the <code>valueOf(String)</code> of every enum fill a cache as surely as <code>getDeclaredMethods</code> does - and all of <code>java.lang.invoke</code>.</p>
+</li>
+<li>
+<p>Say what kind of reflection a call is, so that a report tells what it costs and a build can allow one kind without allowing the others.</p>
+</li>
+<li>
+<p>Let a codebase get there gradually: allow the categories it cannot do without yet, confine what remains to the classes or packages that need it, and report as warnings before failing the build.</p>
+</li>
+<li>
+<p>Keep exceptions honest: a suppression belongs on the variable holding what the platform returned, and a build can refuse suppressions altogether.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+
+<h1 id="quickStart"><a class="anchor" href="#quickStart"></a>2 Quick Start</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/quickStart.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>The simplest way to use the check is the Gradle plugin, which applies ErrorProne and adds the check to the project. The plugin is published to Maven Central rather than to the Gradle Plugin Portal, so the settings of the build look for plugins there too:</p>
+</div>
+<div class="listingblock">
+<div class="title">settings.gradle.kts</div>
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin">pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Then the build applies it:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin">plugins {
+    java
+    id("io.micronaut.errorprone.no-reflection") version "1.0.0"
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Every category is then reported in the main source set. See <a href="#gradlePlugin">Gradle Plugin</a> for what a project can allow.</p>
+</div>
+<div class="paragraph">
+<p>The check is also an ErrorProne plugin of its own, which only has to be on the processor path and is configured with <a href="#flags">flags</a>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin">plugins {
+    java
+    id("net.ltgt.errorprone") version "5.1.1"
+}
+
+dependencies {
+    errorprone("com.google.errorprone:error_prone_core:2.50.0")
+    errorprone("io.micronaut.errorprone:micronaut-errorprone-no-reflection:1.0.0")
+}
+
+tasks.withType&lt;JavaCompile&gt;().configureEach {
+    options.errorprone {
+        option("NoReflection:Allowed", "ENUM_CONSTANTS,CLASS_NAMES")
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>With Maven, add <code>micronaut-errorprone-no-reflection</code> to the <code>annotationProcessorPaths</code> next to <code>error_prone_core</code>, and the flags to the <code>-Xplugin:ErrorProne</code> argument, as the <a href="https://errorprone.info/docs/installation">ErrorProne installation guide</a> describes:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;arg&gt;-Xplugin:ErrorProne -XepOpt:NoReflection:Allowed=ENUM_CONSTANTS&lt;/arg&gt;</code></pre>
+</div>
+</div>
+
+<h1 id="categories"><a class="anchor" href="#categories"></a>3 What Is Reported</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/categories.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>The check reports a call, a method reference or a constructor when the method or constructor it resolves to is among the calls of a category below. The categories are tried in this order, and a call two of them name is reported under the first - <code>Field.getGenericType</code> as a generic signature rather than as access to a field. The Micronaut categories, and the Micronaut types named in the others, match nothing in a project without Micronaut.</p>
+</div>
+<div class="paragraph">
+<p>Each table lists the type that declares the methods, the methods, and the call pattern they are written as, which is also what <code>NoReflection:AllowedCalls</code> and <code>NoReflection:ForbiddenCalls</code> take.</p>
+</div>
+<div class="sect1">
+<h2 id="_annotation_synthesis">ANNOTATION_SYNTHESIS</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut keeps the values of annotations as metadata compiled into the application. Synthesizing turns them back into an instance of the annotation interface, which defines a proxy class for it at run time and needs registering for a native image. Reading the metadata itself - <code>getAnnotation</code>, <code>stringValue</code> and the like - is not reported.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Deprecated deprecated = metadata.synthesize(Deprecated.class);</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.annotation.AnnotationSource</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>synthesize</code>, <code>synthesizeDeclared</code>, <code>synthesizeAll</code>, <code>synthesizeAnnotationsByType</code>, <code>synthesizeDeclaredAnnotationsByType</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.annotation.AnnotationSource+#synthesize|synthesizeDeclared|synthesizeAll|synthesizeAnnotationsByType|synthesizeDeclaredAnnotationsByType</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_target_members">TARGET_MEMBERS</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut&#8217;s executable methods and injection points describe members without reflection. Asking one for its <code>java.lang.reflect</code> member looks that member up, filling the reflection data of its class.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Method method = executableMethod.getTargetMethod();</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.inject.MethodReference</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getTargetMethod</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.inject.MethodReference+#getTargetMethod</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.inject.FieldInjectionPoint</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getField</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.inject.FieldInjectionPoint+#getField</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_reflection_utils">REFLECTION_UTILS</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut&#8217;s helpers look members up, read and write fields and invoke methods reflectively. Left out are the ones that reach for nothing: the table that maps primitive types to their wrappers and back, the check of a setter&#8217;s name, and the building of an error message.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Method method = ReflectionUtils.getRequiredMethod(type, "name");</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.ReflectionUtils</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method but <code>getWrapperType</code>, <code>getPrimitiveType</code>, <code>isSetter</code>, <code>newNoSuchMethodError</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.ReflectionUtils#*-getWrapperType|getPrimitiveType|isSetter|newNoSuchMethodError</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_beans">BEANS</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The JavaBeans introspector reads every public method of a class to find its properties, and descriptors, statements, encoders and event handlers look methods up and invoke them by name. What only handles names or caches, such as <code>Introspector.decapitalize</code>, is not reported.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">BeanInfo info = Introspector.getBeanInfo(type);</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.Introspector</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getBeanInfo</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.Introspector#getBeanInfo</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.Beans</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>instantiate</code>, <code>isInstanceOf</code>, <code>getInstanceOf</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.Beans#instantiate|isInstanceOf|getInstanceOf</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.Statement</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">its constructors, <code>execute</code>, <code>getValue</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.Statement+#&lt;init&gt;|execute|getValue</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.FeatureDescriptor</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">its constructors</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.FeatureDescriptor+#&lt;init&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.PropertyDescriptor</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getPropertyType</code>, <code>getReadMethod</code>, <code>setReadMethod</code>, <code>getWriteMethod</code>, <code>setWriteMethod</code>, <code>createPropertyEditor</code>, <code>getIndexedPropertyType</code>, <code>getIndexedReadMethod</code>, <code>setIndexedReadMethod</code>, <code>getIndexedWriteMethod</code>, <code>setIndexedWriteMethod</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.PropertyDescriptor+#getPropertyType|getReadMethod|setReadMethod|getWriteMethod|setWriteMethod|createPropertyEditor|getIndexedPropertyType|getIndexedReadMethod|setIndexedReadMethod|getIndexedWriteMethod|setIndexedWriteMethod</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.MethodDescriptor</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getMethod</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.MethodDescriptor#getMethod</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.EventSetDescriptor</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getAddListenerMethod</code>, <code>getRemoveListenerMethod</code>, <code>getGetListenerMethod</code>, <code>getListenerMethods</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.EventSetDescriptor#getAddListenerMethod|getRemoveListenerMethod|getGetListenerMethod|getListenerMethods</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.EventHandler</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>create</code>, <code>invoke</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.EventHandler#create|invoke</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.Encoder</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>writeObject</code>, <code>writeStatement</code>, <code>writeExpression</code>, <code>getPersistenceDelegate</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.Encoder+#writeObject|writeStatement|writeExpression|getPersistenceDelegate</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.PersistenceDelegate</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>writeObject</code>, <code>instantiate</code>, <code>initialize</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.PersistenceDelegate+#writeObject|instantiate|initialize</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.XMLDecoder</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>readObject</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.XMLDecoder#readObject</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.PropertyEditorManager</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>findEditor</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.beans.PropertyEditorManager#findEditor</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_serialization">SERIALIZATION</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Java serialization reads the fields, constructors and private <code>readObject</code> and <code>writeObject</code> methods of every class it meets, loads the classes a stream names, and needs serialization metadata in a native image.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Object value = objectInputStream.readObject();</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.io.ObjectInputStream</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>readObject</code>, <code>readUnshared</code>, <code>defaultReadObject</code>, <code>readFields</code>, <code>resolveClass</code>, <code>resolveProxyClass</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.io.ObjectInputStream+#readObject|readUnshared|defaultReadObject|readFields|resolveClass|resolveProxyClass</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.io.ObjectOutputStream</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>writeObject</code>, <code>writeUnshared</code>, <code>defaultWriteObject</code>, <code>putFields</code>, <code>writeFields</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.io.ObjectOutputStream+#writeObject|writeUnshared|defaultWriteObject|putFields|writeFields</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.io.ObjectStreamClass</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>lookup</code>, <code>lookupAny</code>, <code>forClass</code>, <code>getFields</code>, <code>getField</code>, <code>getSerialVersionUID</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.io.ObjectStreamClass#lookup|lookupAny|forClass|getFields|getField|getSerialVersionUID</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_unsafe">UNSAFE</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><code>sun.misc.Unsafe</code> reaches fields by their offset and allocates instances without calling a constructor; <code>sun.reflect.ReflectionFactory</code> makes the constructors serialization uses.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Object instance = unsafe.allocateInstance(type);</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sun.misc.Unsafe</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sun.misc.Unsafe#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sun.reflect.ReflectionFactory</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sun.reflect.ReflectionFactory#*</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_instrumentation">INSTRUMENTATION</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>An agent&#8217;s <code>Instrumentation</code> lists, redefines and retransforms the loaded classes.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Class&lt;?&gt;[] loaded = instrumentation.getAllLoadedClasses();</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.instrument.Instrumentation</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.instrument.Instrumentation+#*</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_proxy">PROXY</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>A <code>java.lang.reflect.Proxy</code> class is defined at run time and lives as long as its class loader; <code>MethodHandleProxies</code> defines a hidden class for an interface; <code>InvocationHandler.invokeDefault</code> invokes a default method reflectively.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Object proxy = Proxy.newProxyInstance(loader, interfaces, handler);</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Proxy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Proxy#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.InvocationHandler</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>invokeDefault</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.InvocationHandler#invokeDefault</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.invoke.MethodHandleProxies</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.invoke.MethodHandleProxies#*</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_handles">HANDLES</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>A method or variable handle reaches a member as reflection does, resolving it by name through a lookup, and the factories and bootstraps behind lambdas, string concatenation, records and switches spin classes at run time. All of <code>java.lang.invoke</code> is reported, but for the exceptions it declares, together with the bootstraps of <code>java.lang.runtime</code>, the resolution of <code>java.lang.constant</code> descriptions, and the handles of <code>java.lang.foreign.Linker</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">MethodHandles.Lookup lookup = MethodHandles.lookup();
+VarHandle next = lookup.findVarHandle(Node.class, "next", Node.class);</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every type of <code>java.lang.invoke</code> and the packages below it, but its exceptions</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.invoke.<strong>#</strong></code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.runtime.ObjectMethods</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.runtime.ObjectMethods#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.runtime.SwitchBootstraps</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.runtime.SwitchBootstraps#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.constant.ConstantDesc</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>resolveConstantDesc</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.constant.ConstantDesc+#resolveConstantDesc</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.constant.DynamicCallSiteDesc</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>resolveCallSiteDesc</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.constant.DynamicCallSiteDesc#resolveCallSiteDesc</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.foreign.Linker</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>downcallHandle</code>, <code>upcallStub</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.foreign.Linker+#downcallHandle|upcallStub</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_service_loading">SERVICE_LOADING</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>A service loader finds implementation classes by name and instantiates them reflectively.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">ServiceLoader&lt;Codec&gt; codecs = ServiceLoader.load(Codec.class);</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.ServiceLoader</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.ServiceLoader#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.ServiceLoader.Provider</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>get</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.ServiceLoader.Provider+#get</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.io.service.SoftServiceLoader</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.io.service.SoftServiceLoader#*</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_class_loading">CLASS_LOADING</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>A class loaded by name is out of sight of a native image, and a class defined at run time is not in one at all.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Class&lt;?&gt; plugin = Class.forName("com.example.Plugin");</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>forName</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class#forName</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.ClassLoader</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>loadClass</code>, <code>findClass</code>, <code>findLoadedClass</code>, <code>findSystemClass</code>, <code>defineClass</code>, <code>resolveClass</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.ClassLoader+#loadClass|findClass|findLoadedClass|findSystemClass|defineClass|resolveClass</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.ModuleLayer</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>defineModules</code>, <code>defineModulesWithOneLoader</code>, <code>defineModulesWithManyLoaders</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.ModuleLayer#defineModules|defineModulesWithOneLoader|defineModulesWithManyLoaders</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.ResourceBundle</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getBundle</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.ResourceBundle#getBundle</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.ResourceBundle.Control</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>newBundle</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.ResourceBundle.Control+#newBundle</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.ClassUtils</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>forName</code>, <code>isPresent</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.ClassUtils#forName|isPresent</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_field_updaters">FIELD_UPDATERS</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The atomic field updaters look their field up with <code>getDeclaredField</code>, filling the declared fields of the class. A <code>VarHandle</code>, their replacement, is reported as <code>HANDLES</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">AtomicReferenceFieldUpdater&lt;Node, Node&gt; next = AtomicReferenceFieldUpdater.newUpdater(Node.class, Node.class, "next");</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.concurrent.atomic.AtomicReferenceFieldUpdater</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>newUpdater</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.concurrent.atomic.AtomicReferenceFieldUpdater#newUpdater</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.concurrent.atomic.AtomicIntegerFieldUpdater</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>newUpdater</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.concurrent.atomic.AtomicIntegerFieldUpdater#newUpdater</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.concurrent.atomic.AtomicLongFieldUpdater</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>newUpdater</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.concurrent.atomic.AtomicLongFieldUpdater#newUpdater</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_enum_constants">ENUM_CONSTANTS</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><code>Class.getEnumConstants</code> invokes the <code>values()</code> of an enum reflectively and keeps the constants for the class, and <code>Enum.valueOf</code> builds and keeps a map of them by name. <code>EnumSet</code> and <code>EnumMap</code> take the constants of their type the same way, and the <code>valueOf(String)</code> the compiler writes for every enum calls <code>Enum.valueOf</code> - so <code>Colour.valueOf("RED")</code> is reported, and <code>Colour.values()</code> is not.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Colour colour = Colour.valueOf("RED");
+EnumSet&lt;Colour&gt; colours = EnumSet.noneOf(Colour.class);</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getEnumConstants</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class#getEnumConstants</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Enum</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>valueOf</code>, <code>describeConstable</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Enum#valueOf|describeConstable</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Enum.EnumDesc</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>of</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Enum.EnumDesc#of</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.EnumSet</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>noneOf</code>, <code>allOf</code>, <code>of</code>, <code>range</code>, <code>copyOf</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.EnumSet#noneOf|allOf|of|range|copyOf</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.EnumMap</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">its constructors</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.EnumMap#&lt;init&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every enum</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The <code>valueOf(String)</code> the compiler writes for it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">None: it is recognised by the compiler&#8217;s own method</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_class_names">CLASS_NAMES</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The simple and canonical names of a class are not in its class file as such. The first call works them out and keeps them in the reflection data of the class. <code>Class.getName</code> reads what the class file holds and is not reported.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">String name = type.getSimpleName();</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getSimpleName</code>, <code>getCanonicalName</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class#getSimpleName|getCanonicalName</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_interfaces">INTERFACES</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><code>Class.getInterfaces</code> keeps the interfaces it returns in the reflection data of the class. <code>Class.getSuperclass</code> does not, and is not reported.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Class&lt;?&gt;[] interfaces = type.getInterfaces();</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getInterfaces</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class#getInterfaces</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.ClassUtils</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>resolveHierarchy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.ClassUtils#resolveHierarchy</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_generic_signatures">GENERIC_SIGNATURES</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name - which is why every method of a generic type is reported too.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Type superclass = type.getGenericSuperclass();</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getGenericSuperclass</code>, <code>getGenericInterfaces</code>, <code>getTypeParameters</code>, <code>toGenericString</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class#getGenericSuperclass|getGenericInterfaces|getTypeParameters|toGenericString</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Executable</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getGenericParameterTypes</code>, <code>getGenericExceptionTypes</code>, <code>getGenericReturnType</code>, <code>getTypeParameters</code>, <code>toGenericString</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Executable+#getGenericParameterTypes|getGenericExceptionTypes|getGenericReturnType|getTypeParameters|toGenericString</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Field</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getGenericType</code>, <code>toGenericString</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Field#getGenericType|toGenericString</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.RecordComponent</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getGenericType</code>, <code>getGenericSignature</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.RecordComponent#getGenericType|getGenericSignature</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Parameter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getParameterizedType</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Parameter#getParameterizedType</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.ParameterizedType</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.ParameterizedType+#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.TypeVariable</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.TypeVariable+#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.WildcardType</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.WildcardType+#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.GenericArrayType</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.GenericArrayType+#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.GenericTypeUtils</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.GenericTypeUtils#*</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_annotations">ANNOTATIONS</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Annotations read from a class, a member, a parameter or a type use are parsed from the class file into proxy instances and kept for it. Micronaut&#8217;s annotation metadata answers the same questions from what was compiled, and is not reported.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Deprecated deprecated = type.getAnnotation(Deprecated.class);</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.AnnotatedElement</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getAnnotation</code>, <code>getAnnotations</code>, <code>getDeclaredAnnotation</code>, <code>getDeclaredAnnotations</code>, <code>getAnnotationsByType</code>, <code>getDeclaredAnnotationsByType</code>, <code>isAnnotationPresent</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.AnnotatedElement+#getAnnotation|getAnnotations|getDeclaredAnnotation|getDeclaredAnnotations|getAnnotationsByType|getDeclaredAnnotationsByType|isAnnotationPresent</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getAnnotatedSuperclass</code>, <code>getAnnotatedInterfaces</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class#getAnnotatedSuperclass|getAnnotatedInterfaces</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Executable</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getParameterAnnotations</code>, <code>getAnnotatedReturnType</code>, <code>getAnnotatedReceiverType</code>, <code>getAnnotatedParameterTypes</code>, <code>getAnnotatedExceptionTypes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Executable+#getParameterAnnotations|getAnnotatedReturnType|getAnnotatedReceiverType|getAnnotatedParameterTypes|getAnnotatedExceptionTypes</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Method</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getDefaultValue</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Method#getDefaultValue</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Field</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getAnnotatedType</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Field#getAnnotatedType</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.RecordComponent</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getAnnotatedType</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.RecordComponent#getAnnotatedType</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Parameter</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getAnnotatedType</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Parameter#getAnnotatedType</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.AnnotatedType</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.AnnotatedType+#*</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_class_members">CLASS_MEMBERS</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Looking a member up fills the reflection data of its class with every member of that kind, declared or public, each a <code>java.lang.reflect</code> object.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Method[] methods = type.getDeclaredMethods();</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getMethod</code>, <code>getMethods</code>, <code>getDeclaredMethod</code>, <code>getDeclaredMethods</code>, <code>getConstructor</code>, <code>getConstructors</code>, <code>getDeclaredConstructor</code>, <code>getDeclaredConstructors</code>, <code>getField</code>, <code>getFields</code>, <code>getDeclaredField</code>, <code>getDeclaredFields</code>, <code>getRecordComponents</code>, <code>getPermittedSubclasses</code>, <code>getNestMembers</code>, <code>getClasses</code>, <code>getDeclaredClasses</code>, <code>getEnclosingMethod</code>, <code>getEnclosingConstructor</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class#getMethod|getMethods|getDeclaredMethod|getDeclaredMethods|getConstructor|getConstructors|getDeclaredConstructor|getDeclaredConstructors|getField|getFields|getDeclaredField|getDeclaredFields|getRecordComponents|getPermittedSubclasses|getNestMembers|getClasses|getDeclaredClasses|getEnclosingMethod|getEnclosingConstructor</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.RecordComponent</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getAccessor</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.RecordComponent#getAccessor</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Executable</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getParameters</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Executable+#getParameters</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_reflective_access">REFLECTIVE_ACCESS</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Reaching a member once it is found - invoking a method, reading or writing the value of a field, creating an instance - makes and keeps an accessor for it, and <code>setAccessible</code> and <code>Module.addOpens</code> break encapsulation to allow it. Reading the name, type or modifiers of a member already at hand is not reported.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Object value = field.get(target);</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 27.2727%;">
+<col style="width: 36.3636%;">
+<col style="width: 36.3637%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Declared by</th>
+<th class="tableblock halign-left valign-top">Methods</th>
+<th class="tableblock halign-left valign-top">Call pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.AccessibleObject</code> and every subtype of it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>setAccessible</code>, <code>trySetAccessible</code>, <code>canAccess</code>, <code>isAccessible</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.AccessibleObject+#setAccessible|trySetAccessible|canAccess|isAccessible</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Constructor</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>newInstance</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Constructor#newInstance</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Method</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>invoke</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Method#invoke</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Field</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>get</code>, <code>getBoolean</code>, <code>getByte</code>, <code>getChar</code>, <code>getShort</code>, <code>getInt</code>, <code>getLong</code>, <code>getFloat</code>, <code>getDouble</code>, <code>set</code>, <code>setBoolean</code>, <code>setByte</code>, <code>setChar</code>, <code>setShort</code>, <code>setInt</code>, <code>setLong</code>, <code>setFloat</code>, <code>setDouble</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Field#get|getBoolean|getByte|getChar|getShort|getInt|getLong|getFloat|getDouble|set|setBoolean|setByte|setChar|setShort|setInt|setLong|setFloat|setDouble</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Array</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.Array#*</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>newInstance</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class#newInstance</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Module</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>addOpens</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Module#addOpens</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.ModuleLayer.Controller</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>addOpens</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.ModuleLayer.Controller#addOpens</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.InstantiationUtils</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.InstantiationUtils#*</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_custom">CUSTOM</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The calls a build forbids besides the categories, with <code>NoReflection:ForbiddenCalls</code> or <code>forbid(&#8230;&#8203;)</code> in the Gradle plugin. Typically a project&#8217;s own helpers that reach for reflection.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Object plugin = LegacyReflector.lookup("plugin"); // with forbid("com.example.LegacyReflector#*")</code></pre>
+</div>
+</div>
+</div>
+</div>
+
+<h1 id="matching"><a class="anchor" href="#matching"></a>4 How Calls Are Matched</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/matching.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>A call is matched by the method or the constructor the compiler resolved it to - the class that declares it and its name - and not by how the source spells it. So the check reports the same call however it is written:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import static java.lang.Class.forName;
+
+class Subject {
+
+    static final Object FIELDS = Subject.class.getDeclaredFields();             // CLASS_MEMBERS, in a field initializer
+
+    Supplier&lt;Object&gt; later = () -&gt; Subject.class.getDeclaredMethods();          // CLASS_MEMBERS, in a lambda
+
+    Function&lt;Class&lt;?&gt;, String&gt; names = Class::getSimpleName;                    // CLASS_NAMES, a method reference
+
+    Function&lt;Class&lt;Colour&gt;, EnumMap&lt;Colour, String&gt;&gt; maps = EnumMap::new;       // ENUM_CONSTANTS, a constructor reference
+
+    static {
+        Subject.class.getInterfaces();                                          // INTERFACES, in an initializer
+    }
+
+    static class Colours extends EnumMap&lt;Colour, String&gt; {
+        Colours() {
+            super(Colour.class);                                                // ENUM_CONSTANTS, a super call
+        }
+    }
+
+    static class Loader extends ClassLoader {
+        Class&lt;?&gt; load(String name) throws ClassNotFoundException {
+            return loadClass(name);                                             // CLASS_LOADING, inherited
+        }
+    }
+
+    void write(Method method, Loader loader, MethodType type) throws Exception {
+        forName("com.example.Plugin");                                          // CLASS_LOADING, a static import
+        new EnumMap&lt;Colour, String&gt;(Colour.class);                              // ENUM_CONSTANTS, a constructor
+        new EnumMap&lt;Colour, String&gt;(Colour.class) { };                          // ENUM_CONSTANTS, an anonymous subclass
+        new MutableCallSite(type) { };                                          // HANDLES
+        method.getAnnotation(Deprecated.class);                                 // ANNOTATIONS, declared by a subtype
+        loader.loadClass("com.example.Plugin");                                 // CLASS_LOADING, through a subclass
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>A call is reported in any class, nested, local or anonymous, and in any method, constructor, initializer or lambda.</p>
+</div>
+<div class="paragraph">
+<p>What decides is what the call resolved to, so a method of the same name on another type is not reported:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">annotationMetadata.getAnnotation("jakarta.inject.Named");    // Micronaut's compiled metadata
+ReflectionUtils.getWrapperType(int.class);                   // a table compiled into the class
+Colour.values();                                             // the array the compiler writes for the enum
+String.valueOf(42);                                          // not an enum
+type.getName();                                              // read from the class file
+type.getSuperclass();
+method.getName();                                            // a member already looked up
+field.getType();
+ReflectionUtils.isSetter("setName", parameterTypes);          // checks a name
+Introspector.decapitalize("URL");</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Reading the name, type, modifiers or declared types of a <code>java.lang.reflect</code> member that is already at hand is not reported: looking it up was. The generic and annotated types a member hands out are the exception - their methods resolve the classes and annotations they describe, and are reported as <code>GENERIC_SIGNATURES</code> and <code>ANNOTATIONS</code>.</p>
+</div>
+<div class="paragraph">
+<p>A class or method a project writes itself, wrapping any of the calls above, is not reported where it is called - the call inside it is. <code>NoReflection:ForbiddenCalls</code> reports such a wrapper&#8217;s own callers too.</p>
+</div>
+
+<h1 id="flags"><a class="anchor" href="#flags"></a>5 ErrorProne Flags</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/flags.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>The check reads what a project allows and forbids from ErrorProne flags, <code>-XepOpt:&lt;flag&gt;=&lt;value&gt;</code>. The Gradle plugin sets them from its <code>noReflection</code> block.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Flag</th>
+<th class="tableblock halign-left valign-top">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>NoReflection:Allowed</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The categories allowed throughout the project, separated by commas</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>NoReflection:AllowedCalls</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The <a href="#calls">calls</a> allowed throughout the project, separated by commas</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>NoReflection:AllowedIn</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The classes and packages reflection is allowed in, as <a href="#calls">scopes</a> separated by commas</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>NoReflection:ForbiddenCalls</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The calls reported as <code>CUSTOM</code>, separated by commas</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>NoReflection:Suppressible</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code> to honour no <code>@SuppressWarnings("NoReflection")</code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>A call is reported when it belongs to a category or to a call the build forbids, unless its category is allowed throughout the project, the call itself is, or it is made in a class or a package where its category is.</p>
+</div>
+
+<h1 id="calls"><a class="anchor" href="#calls"></a>6 Calls and Scopes</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/calls.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>A call is a type, a type followed by <code>+</code> to take in its subtypes, or a package followed by <code>.<strong></code>; then <code>#</code> and the name of a method, names separated by <code>|</code>, <code>&lt;init&gt;</code> for the constructors, or <code></strong></code> for any member, optionally followed by <code>-</code> and the members left out.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Call</th>
+<th class="tableblock halign-left valign-top">What it names</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.Class#getSimpleName|getCanonicalName</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Either method of the class, whatever its parameters</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.EnumMap#&lt;init&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The constructors of the class</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.util.EnumSet#*</code>, or <code>java.util.EnumSet</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Any method or constructor of the class</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.AnnotatedElement+#getAnnotation</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The method declared by the type or by any subtype of it</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io.micronaut.core.reflect.ReflectionUtils#*-getWrapperType</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Any member but the one left out</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>com.example.internal.<strong>#</strong></code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Any member of a type of the package, or of a package below it</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>A nested type is written either way, <code>java.util.ServiceLoader.Provider</code> or <code>java.util.ServiceLoader$Provider</code>.</p>
+</div>
+<div class="paragraph">
+<p>A scope is a class, or a package followed by <code>.*</code>, optionally followed by <code>:</code> and the only categories allowed there, separated by <code>+</code>. A class takes in the classes and lambdas nested in it, and a package the packages below it.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Scope</th>
+<th class="tableblock halign-left valign-top">Where reflection is allowed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>com.example.ReflectionAccess</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Any category, in the class</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>com.example.internal.*</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Any category, in the package and the packages below it</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>com.example.Handles:HANDLES+PROXY</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Only those categories, in the class</p></td>
+</tr>
+</tbody>
+</table>
+
+<h1 id="suppression"><a class="anchor" href="#suppression"></a>7 Suppression</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/suppression.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>Unless the build says otherwise, a call with no alternative can be allowed with <code>@SuppressWarnings("NoReflection")</code>. On the local variable that holds what the platform returned, it leaves the rest of the method checked:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public Method getMethod() {
+    // getMethod returns a java.lang.reflect.Method, which only the platform can produce
+    @SuppressWarnings("NoReflection")
+    Method target = context.getExecutableMethod().getTargetMethod();
+    return target;
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>A suppression on the method or on a class reaches every call inside it, and <code>@SuppressWarnings("all")</code> suppresses the check too.</p>
+</div>
+<div class="paragraph">
+<p>The check decides suppression itself rather than leaving it to ErrorProne, so <code>NoReflection:Suppressible=false</code> stops honouring it for this check alone: every other ErrorProne check of the project, NullAway included, keeps honouring suppressions.</p>
+</div>
+
+<h1 id="gradlePlugin"><a class="anchor" href="#gradlePlugin"></a>8 Gradle Plugin</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/gradlePlugin.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>The <code>io.micronaut.errorprone.no-reflection</code> plugin is published to Maven Central, so the settings of a build list it among their plugin repositories, as the <a href="#quickStart">Quick Start</a> shows. It applies <a href="https://github.com/tbroyer/gradle-errorprone-plugin"><code>net.ltgt.errorprone</code></a>, adds ErrorProne and the check to the project, and turns the <code>noReflection</code> block into the check&#8217;s <a href="#flags">flags</a>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin">noReflection {
+    allow("ENUM_CONSTANTS", "CLASS_NAMES")             // categories allowed throughout the project
+    allowCalls("java.lang.Class#getSimpleName")        // calls allowed throughout the project
+    allowIn("com.example.ReflectionAccess")            // any reflection in a class
+    allowIn("com.example.handles.*", "HANDLES")        // some categories in a package and the packages below it
+    forbid("com.example.LegacyReflector#*")            // the project's own reflective helpers, reported as CUSTOM
+
+    suppressible = false                               // honour no @SuppressWarnings("NoReflection")
+    forbidAll()                                        // allow nothing outside allowIn, and honour no suppression
+    severity("WARN")                                   // report without failing the compilation, ERROR by default
+    checkedSourceSets = setOf("main", "integration")   // the source sets checked, main by default
+    checkedTasks = setOf("compileGenerated")           // compile tasks of no source set checked, none by default
+    checkTests = true                                  // check every compilation
+    errorProneVersion = "2.50.0"                       // the ErrorProne the plugin adds
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Every category is reported by default. Naming the same scope in <code>allowIn</code> again adds to the categories allowed there. <code>forbidAll()</code> together with <code>allow</code> or <code>allowCalls</code> is refused, and so are an unknown category, a malformed call or scope, and a severity other than <code>ERROR</code> or <code>WARN</code>, however it is set.</p>
+</div>
+<div class="paragraph">
+<p>A compile task is checked when it compiles one of the <code>checkedSourceSets</code>, when it is named in <code>checkedTasks</code>, or when <code>checkTests</code> is set; a <code>JavaCompile</code> task a build registers outside the source sets is not checked unless it is named. The ErrorProne plugin itself turns ErrorProne on only for the compile tasks of source sets, so such a task also needs it turned on, with ErrorProne on its processor path:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin">tasks.register&lt;JavaCompile&gt;("compileGenerated") {
+    // ...
+    options.annotationProcessorPath = configurations.annotationProcessor.get()
+    options.errorprone.isEnabled = true
+}
+
+noReflection {
+    checkedTasks = setOf("compileGenerated")
+}</code></pre>
+</div>
+</div>
+
+<h1 id="errorProne"><a class="anchor" href="#errorProne"></a>9 With ErrorProne's Own Checks</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/errorProne.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>With the plugin repositories of the <a href="#quickStart">Quick Start</a> in the settings, the Gradle plugin applies the same <a href="https://github.com/tbroyer/gradle-errorprone-plugin"><code>net.ltgt.errorprone</code></a> plugin a project may already use, so <code>NoReflection</code> runs in the same compilation as ErrorProne&#8217;s built-in checks and any other plugin check, such as NullAway. The <code>noReflection</code> block only sets the severity and the <code>NoReflection:*</code> options of this check; everything the project configures in <code>options.errorprone</code> stays as it is.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin">import net.ltgt.gradle.errorprone.CheckSeverity
+import net.ltgt.gradle.errorprone.errorprone
+
+plugins {
+    java
+    id("net.ltgt.errorprone") version "5.1.1"
+    id("io.micronaut.errorprone.no-reflection") version "1.0.0"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    errorprone("com.google.errorprone:error_prone_core:2.50.0")
+    errorprone("com.uber.nullaway:nullaway:0.14.1")
+}
+
+noReflection {
+    allowIn("com.example.ReflectionAccess")
+}
+
+tasks.withType&lt;JavaCompile&gt;().configureEach {
+    options.errorprone {
+        check("NullAway", CheckSeverity.ERROR)
+        option("NullAway:AnnotatedPackages", "com.example")
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>A compilation then fails on both a reflective call outside <code>com.example.ReflectionAccess</code> and a null returned where NullAway forbids it. The ErrorProne the plugin adds and the one the project declares are resolved like any other dependency, to the higher of the two versions.</p>
+</div>
+<div class="paragraph">
+<p>Without the Gradle plugin, the check is one more ErrorProne plugin on the processor path, configured with its <a href="#flags">flags</a> beside the options of the others:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin">dependencies {
+    errorprone("com.google.errorprone:error_prone_core:2.50.0")
+    errorprone("com.uber.nullaway:nullaway:0.14.1")
+    errorprone("io.micronaut.errorprone:micronaut-errorprone-no-reflection:1.0.0")
+}
+
+tasks.withType&lt;JavaCompile&gt;().configureEach {
+    options.errorprone {
+        check("NullAway", CheckSeverity.ERROR)
+        option("NullAway:AnnotatedPackages", "com.example")
+        option("NoReflection:AllowedIn", "com.example.ReflectionAccess")
+    }
+}</code></pre>
+</div>
+</div>
+
+<h1 id="limitations"><a class="anchor" href="#limitations"></a>10 What the Check Cannot See</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/limitations.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>The check sees the calls a project&#8217;s source makes. Two kinds of code fill the same caches out of its sight:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Code the compiler writes: the bootstraps of lambdas, string concatenation, records and pattern switches.</p>
+</li>
+<li>
+<p>The platform&#8217;s own frameworks, which reach for reflection from inside <code>java.text</code>, <code>java.time</code>, <code>Locale</code>, security providers or the tree bins of a <code>HashMap</code>.</p>
+</li>
+</ul>
+</div>
+
+<h1 id="repository"><a class="anchor" href="#repository"></a>11 Repository</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/repository.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>You can find the source code of this project in this repository:</p>
+</div>
+<div class="paragraph">
+<p><a href="https://github.com/micronaut-projects/errorprone-no-reflection">https://github.com/micronaut-projects/errorprone-no-reflection</a></p>
+</div>
+
+<h1 id="releaseHistory"><a class="anchor" href="#releaseHistory"></a>12 Release History</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/errorprone-no-reflection/edit/1.0.x/src/main/docs/guide/releaseHistory.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>For this project, you can find a list of releases (with release notes) here:</p>
+</div>
+<div class="paragraph">
+<p><a href="https://github.com/micronaut-projects/errorprone-no-reflection/releases">https://github.com/micronaut-projects/errorprone-no-reflection/releases</a></p>
+</div>
+
+    </div>
+</div>
+
+<script type="text/javascript">
+
+</script>
+</body>
+</html>
