@@ -4,14 +4,15 @@ This repository publishes `micronaut-errorprone-no-reflection`, an ErrorProne ch
 
 ## Repository Shape
 
-- `errorprone-no-reflection/` is the `NoReflection` check: `ReflectionCategory` declares the categories and the flags, `ReflectionMatchers` the calls of each category as `CallPattern`s, `ReflectionPolicy` what a build allows, and `NoReflection` the check and its suppression.
+- `errorprone-no-reflection/` is the `NoReflection` check: `ReflectionCategory` declares the categories and the flags, `ReflectionProblem` the problems within them that a report links to, `ReflectionMatchers` the calls of each problem as `CallPattern`s, `ReflectionPolicy` what a build allows, and `NoReflection` the check and its suppression.
 - `errorprone-no-reflection-gradle-plugin/` is `io.micronaut.errorprone.no-reflection`: `NoReflectionExtension` is the `noReflection` block and `NoReflectionPlugin` turns it into flags. Its TestKit specs live in `src/functionalTest` and compile against the check this build has just built.
 - `errorprone-no-reflection-bom/` is the BOM.
 - `buildSrc/src/main/groovy/io.micronaut.build.internal.errorprone-no-reflection-*.gradle` are the convention plugins.
 
 ## Changing What Is Reported
 
-- A call belongs in `ReflectionMatchers`, under the category whose cache it fills or whose kind it is. Categories are tried in the order they are declared, so a call two of them name is reported under the first.
+- A call belongs in `ReflectionMatchers`, under the problem whose cache it fills or whose kind it is; each problem belongs to one category. Categories are tried in the order they are declared, so a call two of them name is reported under the first.
+- Each problem has a section in `src/main/docs/guide/categories.adoc`, anchored `[[problem-<name>]]` and listing exactly its calls, which a report links to. It quotes, verbatim, the JDK or Micronaut source that fills the cache.
 - Every category has a sample in `NoReflectionTest.EVERY_CATEGORY`. A type javac warns about, such as `sun.misc.Unsafe`, must be named only on a line marked `// BUG: Diagnostic contains:`.
 - Keep `src/main/docs/guide/categories.adoc` in step with the categories, and `flags.adoc` and `gradlePlugin.adoc` with the flags and the `noReflection` block.
 

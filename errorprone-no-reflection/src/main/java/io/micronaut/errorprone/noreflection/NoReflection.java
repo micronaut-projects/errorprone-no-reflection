@@ -41,7 +41,8 @@ import java.util.Set;
  * <p>A method reference is matched as well as a call, and a constructor as well as a method: {@code Class::getDeclaredMethods}
  * handed to a map is the lookup deferred, and {@code new EnumMap<>(type)} fills the enum constants of the type as surely
  * as {@code EnumSet.noneOf} does. What the build allows and forbids comes from the flags declared on
- * {@link ReflectionCategory}.</p>
+ * {@link ReflectionCategory}. A report links to the section of the guide saying what the call does and which cache it
+ * fills.</p>
  *
  * <p>A single call can still be allowed where nothing else will do, with a suppression on the local variable that holds
  * what the platform returned rather than on the method, so that the rest of the method stays checked:</p>
@@ -79,6 +80,9 @@ import java.util.Set;
         @SuppressWarnings("NoReflection") on the local variable holding the result; say above it why the platform had \
         to be asked. On the method instead, it would also hide every other call the method makes.""",
     severity = BugPattern.SeverityLevel.ERROR,
+    // ErrorProne would link to a page of its own site, which has none for this check; a report links to its problem
+    linkType = BugPattern.LinkType.CUSTOM,
+    link = ReflectionProblem.GUIDE + "#categories",
     // the check decides suppression itself, so that a build can stop honouring it for this check alone
     suppressionAnnotations = {})
 public final class NoReflection extends BugChecker
@@ -131,11 +135,15 @@ public final class NoReflection extends BugChecker
         if (method == null) {
             return Description.NO_MATCH;
         }
-        ReflectionCategory category = policy.reported(method, state);
-        if (category == null || (suppressible && suppressed(state))) {
+        ReflectionProblem problem = policy.reported(method, state);
+        if (problem == null || (suppressible && suppressed(state))) {
             return Description.NO_MATCH;
         }
-        return buildDescription(tree).setMessage(message() + " [" + category + "]").build();
+        // the section of the guide saying what the call does, rather than the page of the check
+        return buildDescription(tree)
+            .setMessage(message() + " [" + problem.category() + "]")
+            .setLinkUrl(problem.link())
+            .build();
     }
 
     // a suppression on any declaration around the call: the variable holding its result, the method, a class

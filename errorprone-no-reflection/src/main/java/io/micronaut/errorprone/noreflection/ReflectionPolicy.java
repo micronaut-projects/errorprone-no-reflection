@@ -67,18 +67,18 @@ final class ReflectionPolicy {
     /**
      * @param method The method, or constructor, a call or a reference resolved to
      * @param state  The state, whose path leads to the call
-     * @return The category to report the call under, or {@code null} when it is not reported
+     * @return The problem to report the call as, or {@code null} when it is not reported
      */
-    ReflectionCategory reported(Symbol.MethodSymbol method, VisitorState state) {
-        ReflectionCategory category = ReflectionMatchers.categoryOf(method, state);
-        if (category == null && anyMatches(forbiddenCalls, method, state)) {
-            category = ReflectionCategory.CUSTOM;
+    ReflectionProblem reported(Symbol.MethodSymbol method, VisitorState state) {
+        ReflectionProblem problem = ReflectionMatchers.problemOf(method, state);
+        if (problem == null && anyMatches(forbiddenCalls, method, state)) {
+            problem = ReflectionProblem.CUSTOM;
         }
-        if (category == null || allowed.contains(category) || anyMatches(allowedCalls, method, state)
-            || inAllowedScope(category, state)) {
+        if (problem == null || allowed.contains(problem.category()) || anyMatches(allowedCalls, method, state)
+            || inAllowedScope(problem.category(), state)) {
             return null;
         }
-        return category;
+        return problem;
     }
 
     private static boolean anyMatches(List<CallPattern> patterns, Symbol.MethodSymbol method, VisitorState state) {

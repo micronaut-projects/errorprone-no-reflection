@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -30,7 +32,8 @@ import java.util.regex.Pattern;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * The guide lists what each category reports, and has to go on listing exactly that, under the right category.
+ * The guide lists what each category reports, and has to go on listing exactly that, under the right category and the
+ * section of the right problem - the section a report links to.
  */
 class DocumentationTest {
 
@@ -38,6 +41,9 @@ class DocumentationTest {
 
     /** A call pattern in the guide, written in backticks with its | escaped for the table it sits in. */
     private static final Pattern DOCUMENTED = Pattern.compile("`([^`\\s]+#[^`\\s]*)`");
+
+    /** The anchor of the section on a problem, which is what a report links to. */
+    private static final Pattern ANCHOR = Pattern.compile("^\\[\\[(problem-[a-z-]+)]]$", Pattern.MULTILINE);
 
     @Test
     void theGuideListsTheCallsOfEachCategoryUnderIt() throws IOException {
@@ -48,11 +54,7 @@ class DocumentationTest {
         for (int i = 1; i < sections.length; i++) {
             String section = sections[i];
             ReflectionCategory category = ReflectionCategory.named(section.substring(0, section.indexOf('\n')));
-            Set<String> patterns = new TreeSet<>();
-            Matcher matcher = DOCUMENTED.matcher(section);
-            while (matcher.find()) {
-                patterns.add(matcher.group(1).replace("\\|", "|"));
-            }
+            Set<String> patterns = patternsIn(section);
             if (!patterns.isEmpty()) {
                 documented.put(category, patterns);
             }
@@ -60,5 +62,44 @@ class DocumentationTest {
         Map<ReflectionCategory, Set<String>> reported = new EnumMap<>(ReflectionCategory.class);
         ReflectionMatchers.patterns().forEach((category, patterns) -> reported.put(category, new TreeSet<>(patterns)));
         assertEquals(reported, documented);
+    }
+
+    @Test
+    void theGuideHasASectionOnEachProblemListingItsCalls() throws IOException {
+        String guide = Files.readString(CATEGORIES);
+        Map<String, Set<String>> documented = new LinkedHashMap<>();
+        Matcher anchors = ANCHOR.matcher(guide);
+        String anchor = null;
+        int start = 0;
+        while (anchors.find()) {
+            if (anchor != null) {
+                documented.put(anchor, patternsIn(sectionFrom(guide, start, anchors.start())));
+            }
+            anchor = anchors.group(1);
+            start = anchors.end();
+        }
+        if (anchor != null) {
+            documented.put(anchor, patternsIn(sectionFrom(guide, start, guide.length())));
+        }
+        Map<String, Set<String>> reported = new LinkedHashMap<>();
+        for (ReflectionProblem problem : ReflectionProblem.values()) {
+            reported.put(problem.anchor(), new TreeSet<>(ReflectionMatchers.problemPatterns().getOrDefault(problem, List.of())));
+        }
+        assertEquals(reported, documented);
+    }
+
+    // a section ends where the next begins, or at the heading of the next category
+    private static String sectionFrom(String guide, int start, int end) {
+        int category = guide.indexOf("\n== ", start);
+        return guide.substring(start, category >= 0 && category < end ? category : end);
+    }
+
+    private static Set<String> patternsIn(String text) {
+        Set<String> patterns = new TreeSet<>();
+        Matcher matcher = DOCUMENTED.matcher(text);
+        while (matcher.find()) {
+            patterns.add(matcher.group(1).replace("\\|", "|"));
+        }
+        return patterns;
     }
 }
