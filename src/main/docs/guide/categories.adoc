@@ -1,6 +1,43 @@
 The check reports a call, a method reference or a constructor when the method or constructor it resolves to is among the calls of a category below. The categories are tried in this order, and a call two of them name is reported under the first - `Field.getGenericType` as a generic signature rather than as access to a field. The Micronaut categories, and the Micronaut types named in the others, match nothing in a project without Micronaut.
 
+Within a category, the calls that reach for reflection the same way make up a problem, which has a section of its own: what the platform does when the call is made, quoted from JDK 25 or Micronaut, which cache it fills, and what to do instead. A report links to the section on its problem:
+
+[source]
+----
+Subject.java:12: error: [NoReflection] Reflection is not allowed here [CLASS_NAMES]
+        String name = type.getSimpleName();
+                                        ^
+    (see https://micronaut-projects.github.io/errorprone-no-reflection/latest/guide/#problem-simple-name)
+----
+
 Each table lists the type that declares the methods, the methods, and the call pattern they are written as, which is also what `NoReflection:AllowedCalls` and `NoReflection:ForbiddenCalls` take.
+
+Most of the calls fill the reflection data of a class, which the sections below come back to. In JDK 25, `java.lang.Class` keeps the members, names and interfaces it has handed out in a `ReflectionData`, behind a soft reference:
+
+[source,java]
+----
+private static class ReflectionData<T> {
+    volatile Field[] declaredFields;
+    volatile Field[] publicFields;
+    volatile Method[] declaredMethods;
+    volatile Method[] publicMethods;
+    volatile Constructor<T>[] declaredConstructors;
+    volatile Constructor<T>[] publicConstructors;
+    // Intermediate results for getFields and getMethods
+    volatile Field[] declaredPublicFields;
+    volatile Method[] declaredPublicMethods;
+    volatile Class<?>[] interfaces;
+
+    // Cached names
+    String simpleName;
+    String canonicalName;
+    // ...
+}
+
+private transient volatile SoftReference<ReflectionData<T>> reflectionData;
+----
+
+The first call that needs it creates it, and every entry is filled on first use. The garbage collector may clear it when memory runs short, and then the next call builds it again from the start. Enum constants, generic signatures, annotations and the accessors of members are kept in fields of their own, on the class or on the member.
 
 == ANNOTATION_SYNTHESIS
 
@@ -10,6 +47,9 @@ Micronaut keeps the values of annotations as metadata compiled into the applicat
 ----
 Deprecated deprecated = metadata.synthesize(Deprecated.class);
 ----
+
+[[problem-annotation-synthesis]]
+=== Synthesized annotations
 
 [cols="3,4,4"]
 |===
@@ -21,6 +61,51 @@ Deprecated deprecated = metadata.synthesize(Deprecated.class);
 
 |===
 
+The default methods of `AnnotationSource` return nothing; the annotation metadata the compiler writes overrides them. In Micronaut 5.1, `io.micronaut.inject.annotation.AbstractAnnotationMetadata` does this:
+
+[source,java]
+----
+public @Nullable <T extends Annotation> T synthesize(Class<T> annotationClass) {
+    ArgumentUtils.requireNonNull("annotationClass", annotationClass);
+    if (hasAnnotation(annotationClass) || hasStereotype(annotationClass)) {
+        String annotationName = annotationClass.getName();
+        return (T) getAnnotationMap().computeIfAbsent(annotationName, s -> {
+            final AnnotationValue<T> annotationValue = findAnnotation(annotationClass).orElse(null);
+            return AnnotationMetadataSupport.buildAnnotation(annotationClass, annotationValue);
+
+        });
+    }
+    return null;
+}
+----
+
+The synthesized instance is kept in a `ConcurrentHashMap` in the metadata object itself, keyed by the annotation's name. `synthesizeAll` and `synthesizeDeclared` go one step further: they load every annotation type named in the metadata with `ClassUtils.forName` and synthesize each, keeping the array in the metadata. Building an instance does not use `Proxy.newProxyInstance`: `AnnotationMetadataSupport` asks for the proxy class and its constructor, and keeps the constructor in a static map:
+
+[source,java]
+----
+static Optional<Constructor<InvocationHandler>> getProxyClass(Class<? extends Annotation> annotation) {
+    return ANNOTATION_PROXY_CACHE.computeIfAbsent(annotation, aClass -> {
+        // ...
+        Class proxyClass = Proxy.getProxyClass(proxyLoader, annotation, AnnotationValueProvider.class);
+        return ReflectionUtils.findConstructor(proxyClass, InvocationHandler.class);
+    });
+}
+----
+
+`ANNOTATION_PROXY_CACHE` is a static `ConcurrentHashMap` of `AnnotationMetadataSupport`, so the constructor - and through it the proxy class - lives as long as Micronaut's classes do. `buildAnnotation` then calls the constructor through `InstantiationUtils.tryInstantiate`, which is `Constructor.newInstance` and so creates a constructor accessor for it. In JDK 25, `java.lang.reflect.Proxy` defines the class and keeps its constructor in a `ClassLoaderValue`:
+
+[source,java]
+----
+return proxyCache.sub(intfs).computeIfAbsent(
+    loader,
+    (ld, clv) -> new ProxyBuilder(ld, clv.key()).build()
+);
+----
+
+A `ClassLoaderValue` is held in a map in the class loader, so the proxy constructor lives as long as the loader chosen by Micronaut - the annotation's own loader, or the one that loaded `AnnotationValueProvider` for an annotation of the JDK. `ProxyBuilder.build` generates the bytes of a new class, defines it with `JLA.defineClass`, and looks its constructor up with `getConstructor`, which fills `ReflectionData.publicConstructors` of the proxy class. Generating the class calls `getMethods()` on the annotation interface and on `AnnotationValueProvider`, filling their public methods, and the static initializer of the generated class looks every method up again by name with `Class.forName` and `getMethod`. Every call to an annotation member then goes through the `InvocationHandler`, which answers it by the `Method` object's name.
+
+A class defined at run time cannot be in a native image, so the proxy class has to be declared ahead of time. Reading the metadata does not need it: `getAnnotation`/`findAnnotation` return an `AnnotationValue`, and `stringValue`, `intValue`, `booleanValue` and the like read the compiled values directly. Where a third party API insists on an annotation instance, the synthesized one is cached per metadata object, so synthesize it in one place rather than on every call.
+
 == TARGET_MEMBERS
 
 Micronaut's executable methods and injection points describe members without reflection. Asking one for its `java.lang.reflect` member looks that member up, filling the reflection data of its class.
@@ -30,6 +115,9 @@ Micronaut's executable methods and injection points describe members without ref
 Method method = executableMethod.getTargetMethod();
 ----
 
+[[problem-target-method]]
+=== MethodReference.getTargetMethod
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -38,11 +126,85 @@ Method method = executableMethod.getTargetMethod();
 |`getTargetMethod`
 |`io.micronaut.inject.MethodReference+#getTargetMethod`
 
+|===
+
+An `ExecutableMethod` is invoked through a dispatch method the compiler writes, so it has no `Method` until one is asked for. The compiler writes the lookup as well: the generated `getTargetMethodByIndex` of a bean's executable methods calls `ReflectionUtils.getRequiredMethod` with the declaring class, the name and the parameter types. In Micronaut 5.1, the other implementations do the same - `io.micronaut.context.AbstractExecutable`, for one, does this:
+
+[source,java]
+----
+public final Method getTargetMethod() {
+    if (method == null) {
+        Method resolvedMethod = resolveTargetMethod();
+        resolvedMethod.setAccessible(true);
+        this.method = resolvedMethod;
+    }
+    return this.method;
+}
+// ...
+protected Method resolveTargetMethod() {
+    return ReflectionUtils.getRequiredMethod(declaringType, methodName, argTypes);
+}
+----
+
+`AbstractExecutable` keeps the `Method` in the executable; the executable methods of a bean definition and of an introspection do not, and look it up again on every call - those of an introspection logging a warning that it needs reflection. `ReflectionUtils.getRequiredMethod` goes to `Class.getDeclaredMethod` and, when the method is inherited, walks up the superclasses with `getDeclaredMethods()`. In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+private Method[] privateGetDeclaredMethods(boolean publicOnly) {
+    Method[] res;
+    ReflectionData<T> rd = reflectionData();
+    res = publicOnly ? rd.declaredPublicMethods : rd.declaredMethods;
+    if (res != null) return res;
+    // No cached value available; request value from VM
+    res = Reflection.filterMethods(this, getDeclaredMethods0(publicOnly));
+    // ...
+        rd.declaredMethods = res;
+----
+
+The first lookup asks the virtual machine for every method the class declares and keeps them as root `Method` objects in `ReflectionData.declaredMethods`, held by a `SoftReference` from the class. Each `Method` holds its parameter, return and exception types as `Class` objects, so creating them loads those classes too. What `getTargetMethod` returns is a copy that points to its root; `setAccessible(true)` marks the copy, and invoking it creates a method accessor that is stored on the root.
+
+`ExecutableMethod.invoke` calls the method through the dispatch code the compiler wrote, and `getArguments`, `getReturnType`, `getMethodName` and the annotation metadata describe it without a `Method`. Where a bean's method is needed by name, `BeanDefinition.findMethod` finds its `ExecutableMethod`.
+
+[[problem-injection-point-field]]
+=== FieldInjectionPoint.getField
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`io.micronaut.inject.FieldInjectionPoint` and every subtype of it
 |`getField`
 |`io.micronaut.inject.FieldInjectionPoint+#getField`
 
 |===
+
+A field injection point knows the declaring class, the name and the type of its field; the compiler writes the injection itself. In Micronaut 5.1, `io.micronaut.context.DefaultFieldInjectionPoint` does this:
+
+[source,java]
+----
+public Field getField() {
+    return ReflectionUtils.getRequiredField(declaringType, this.field);
+}
+----
+
+Nothing is kept in the injection point, so every call looks the field up again. `ReflectionUtils.getRequiredField` calls `Class.getDeclaredField` and, when the field is inherited, walks up the superclasses the same way. In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+private Field[] privateGetDeclaredFields(boolean publicOnly) {
+    Field[] res;
+    ReflectionData<T> rd = reflectionData();
+    res = publicOnly ? rd.declaredPublicFields : rd.declaredFields;
+    if (res != null) return res;
+    // No cached value available; request value from VM
+    res = Reflection.filterFields(this, getDeclaredFields0(publicOnly));
+    // ...
+        rd.declaredFields = res;
+----
+
+The first lookup fills `ReflectionData.declaredFields` of the declaring class with a root `Field` for every field it declares - each holding its type as a `Class`, which loads it - and hands out a copy of the one asked for. Reading or writing through that copy creates a field accessor that is stored on the root.
+
+`getName`, `getType`, `asArgument` and the annotation metadata of the injection point describe the field without a `Field`. Where the value of a property is wanted, a `BeanIntrospection` of the class reads and writes it through `BeanProperty` without reflection.
 
 == REFLECTION_UTILS
 
@@ -52,6 +214,9 @@ Micronaut's helpers look members up, read and write fields and invoke methods re
 ----
 Method method = ReflectionUtils.getRequiredMethod(type, "name");
 ----
+
+[[problem-reflection-utils]]
+=== ReflectionUtils
 
 [cols="3,4,4"]
 |===
@@ -63,6 +228,61 @@ Method method = ReflectionUtils.getRequiredMethod(type, "name");
 
 |===
 
+`ReflectionUtils` keeps nothing of its own: apart from the two tables of primitive types, it has no state, and every helper is a thin wrapper around `java.lang.Class` and `java.lang.reflect`. In Micronaut 5.1, `io.micronaut.core.reflect.ReflectionUtils` does this:
+
+[source,java]
+----
+public static Method getRequiredMethod(Class<?> type, String name, Class<?>... argumentTypes) {
+    try {
+        return type.getDeclaredMethod(name, argumentTypes);
+    } catch (NoSuchMethodException e) {
+        return findMethod(type, name, argumentTypes)
+            .orElseThrow(() -> newNoSuchMethodError(type, name, argumentTypes));
+    }
+}
+----
+
+The lookups - `getDeclaredMethod`, `getMethod`, `findMethod`, `findMethodsByName`, `getRequiredMethod`, `getRequiredInternalMethod`, `findConstructor`, `getRequiredInternalConstructor`, `findDeclaredField`, `findField`, `getRequiredField` - end in `Class.getDeclaredMethod`, `getDeclaredMethods()`, `getMethods()`, `getDeclaredConstructor` or `getDeclaredField`, and `findMethod`, `findMethodsByName` and `findField` repeat them for every superclass. In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+public Method getDeclaredMethod(String name, Class<?>... parameterTypes)
+        throws NoSuchMethodException {
+    Objects.requireNonNull(name);
+    Method method = searchMethods(privateGetDeclaredMethods(false), name, parameterTypes);
+    if (method == null) {
+        throw new NoSuchMethodException(methodToString(name, parameterTypes));
+    }
+    return getReflectionFactory().copyMethod(method);
+}
+----
+
+So the caches filled are those of `java.lang.Class`: `ReflectionData.declaredMethods`, `declaredPublicMethods`, `publicMethods`, `declaredConstructors` or `declaredFields` of every class searched, each held by a `SoftReference` from the class and holding root member objects whose parameter and field types are loaded as classes. A search that walks the hierarchy fills them for every superclass it passes. `getAllClassesInHierarchy`, `getAllInterfaces` and `populateInterfaces` call `getInterfaces()`, which fills `ReflectionData.interfaces` of each class.
+
+The rest act on a member: `invokeMethod` and `invokeInaccessibleMethod` call `Method.invoke`, and `getField`, `getFieldValue` and both `setField` make the field accessible and read or write it. In JDK 25, the first such call creates an accessor, built on a method handle, and stores it on the root member - `java.lang.reflect.Field` does this:
+
+[source,java]
+----
+private FieldAccessor acquireOverrideFieldAccessor() {
+    // First check to see if one has been created yet, and take it
+    // if so
+    Field root = this.root;
+    FieldAccessor tmp = root == null ? null : root.overrideFieldAccessor;
+    if (tmp != null) {
+        overrideFieldAccessor = tmp;
+    } else {
+        // Otherwise fabricate one and propagate it up to the root
+        tmp = reflectionFactory.newFieldAccessor(this, true);
+        setOverrideFieldAccessor(tmp);
+    }
+    return tmp;
+}
+----
+
+The root is the one kept in the reflection data of the class, so the accessor lives as long as that does. `getField` and `getFieldValue` look the field up again on every call.
+
+Code the Micronaut compiler writes calls these helpers where it cannot call a member directly, and to answer `getTargetMethod`. In application code, a `BeanIntrospection` reads and writes properties and calls constructors and methods of an `@Introspected` class without reflection, and a bean's `ExecutableMethod` invokes a method through the dispatch code the compiler wrote. Where only a primitive/wrapper mapping is needed, `getWrapperType` and `getPrimitiveType` are not reported.
+
 == BEANS
 
 The JavaBeans introspector reads every public method of a class to find its properties, and descriptors, statements, encoders and event handlers look methods up and invoke them by name. What only handles names or caches, such as `Introspector.decapitalize`, is not reported.
@@ -72,6 +292,9 @@ The JavaBeans introspector reads every public method of a class to find its prop
 BeanInfo info = Introspector.getBeanInfo(type);
 ----
 
+[[problem-bean-info]]
+=== Introspector.getBeanInfo
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -80,51 +303,530 @@ BeanInfo info = Introspector.getBeanInfo(type);
 |`getBeanInfo`
 |`java.beans.Introspector#getBeanInfo`
 
+|===
+
+In JDK 25, `java.beans.Introspector` does this:
+
+[source,java]
+----
+public static BeanInfo getBeanInfo(Class<?> beanClass)
+    throws IntrospectionException
+{
+    ThreadGroupContext context = ThreadGroupContext.getContext();
+    BeanInfo beanInfo = context.getBeanInfo(beanClass);
+    if (beanInfo == null) {
+        beanInfo = new Introspector(beanClass, null, USE_ALL_BEANINFO).getBeanInfo();
+        context.putBeanInfo(beanClass, beanInfo);
+    }
+    return beanInfo;
+}
+----
+
+The finished `BeanInfo` is kept in `ThreadGroupContext.beanInfoCache`, a `WeakHashMap` keyed by the class. There is one `ThreadGroupContext` per thread group, held in a static `WeakIdentityMap` keyed by the `ThreadGroup`, so a thread in another group introspects the class again. Only the one-argument form, and the forms called with no stop class and `USE_ALL_BEANINFO`, use this cache; any other stop class or flag builds a new `BeanInfo` on every call.
+
+Building one does a great deal. The constructor looks for an explicit `<name>BeanInfo` class - `BeanInfoFinder` tries `Class.forName` with the class loader of the bean, then with the default loader, then in each package of the search path, and creates what it finds with `Class.newInstance`. It then introspects the superclass the same way, so every superclass up to `Object` gets its own `BeanInfo` in the cache. The methods come from `ClassInfo`, a static cache in `com.sun.beans.introspect`:
+
+[source,java]
+----
+private static final Cache<Class<?>,ClassInfo> CACHE
+        = new Cache<Class<?>,ClassInfo>(Cache.Kind.SOFT, Cache.Kind.SOFT) {
+    @Override
+    public ClassInfo create(Class<?> type) {
+        return new ClassInfo(type);
+    }
+};
+----
+
+Keys and values are both held by soft references. `ClassInfo.getMethods` fills its `methods` field from `MethodInfo.get`, which asks the class, and each interface it implements, for all its public methods:
+
+[source,java]
+----
+boolean inaccessible = !Modifier.isPublic(type.getModifiers());
+for (Method method : type.getMethods()) {
+    if (method.getDeclaringClass().equals(type)) {
+----
+
+`Class.getMethods` fills `ReflectionData.publicMethods` of the class, and the public declared methods of each superclass and interface on the way. Finding properties and event sets reads the generic return and parameter types of each accessor, which fills `genericInfo` of those `Method` objects, and reads the `@BeanProperty` annotation of each one. For a class that is not public, `MethodFinder.findAccessibleMethod` walks its generic superclass and interfaces as well.
+
+A Micronaut `@Introspected` type has a `BeanIntrospection`, from `BeanIntrospection.getIntrospection`, with its properties and methods compiled into it; `BeanWrapper` reads and writes those properties by name.
+
+[[problem-beans-instantiate]]
+=== Beans.instantiate
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.beans.Beans`
 |`instantiate`, `isInstanceOf`, `getInstanceOf`
 |`java.beans.Beans#instantiate\|isInstanceOf\|getInstanceOf`
+
+|===
+
+`instantiate` takes the name of a bean, not a class. In JDK 25, `java.beans.Beans` first looks for a serialized bean of that name and reads it with Java serialization:
+
+[source,java]
+----
+final String serName = beanName.replace('.','/').concat(".ser");
+if (cls == null)
+    ins =  ClassLoader.getSystemResourceAsStream(serName);
+else
+    ins =  cls.getResourceAsStream(serName);
+if (ins != null) {
+    try (ins) {
+        if (cls == null) {
+            oins = new ObjectInputStream(ins);
+        } else {
+            oins = new ObjectInputStreamWithLoader(ins, cls);
+        }
+        result = oins.readObject();
+----
+
+If there is none, it loads the class by name and creates it with its no-argument constructor:
+
+[source,java]
+----
+try {
+    cl = ClassFinder.findClass(beanName, cls);
+} catch (ClassNotFoundException ex) {
+    // ...
+try {
+    result = cl.newInstance();
+----
+
+`Beans` keeps nothing itself. The serialized path fills the serialization caches described under SERIALIZATION. `ClassFinder.findClass` is `Class.forName(name, false, loader)`, which loads the class and records it in the class loader. `Class.newInstance` keeps the constructor it found in `Class.cachedConstructor`, a plain field of the class, after filling `ReflectionData.declaredConstructors`.
+
+`isInstanceOf` walks the superclasses of the bean and, when the target type is an interface, asks each for its interfaces, which fills `ReflectionData.interfaces` of every class on the way. `getInstanceOf` returns the bean it is given and fills no cache; it is reported with `isInstanceOf`, whose answer it acts on.
+
+Where the type is known, create it with `new`, or let Micronaut create it: a bean from the `BeanContext`, or an `@Introspected` type through `BeanIntrospection.instantiate`. An `instanceof` test or `Class.isInstance` answers `isInstanceOf`.
+
+[[problem-bean-statement]]
+=== Statement and Expression
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.beans.Statement` and every subtype of it
 |its constructors, `execute`, `getValue`
 |`java.beans.Statement+#<init>\|execute\|getValue`
 
+|===
+
+A `Statement` names a method and its arguments; `Expression` is the subtype that also keeps the result. The constructors only store the target, the name and a copy of the arguments - they are reported because a statement exists to be run. Running it, with `execute` or the first `Expression.getValue`, looks the method up by name and the classes of the arguments. In JDK 25, `java.beans.Statement` does this:
+
+[source,java]
+----
+if (m == null && target != Class.class) {
+    m = getMethod((Class)target, methodName, argClasses);
+}
+// ...
+m = getMethod(target.getClass(), methodName, argClasses);
+----
+
+`getMethod` goes through `com.sun.beans.finder.MethodFinder`, whose results live in a static cache:
+
+[source,java]
+----
+private static final Cache<Signature, Method> CACHE = new Cache<Signature, Method>(SOFT, SOFT) {
+    @Override
+    public Method create(Signature signature) {
+        try {
+            MethodFinder finder = new MethodFinder(signature.getName(), signature.getArgs());
+            return findAccessibleMethod(finder.find(signature.getType().getMethods()));
+        }
+----
+
+Each distinct class, name and argument classes is one entry, keyed and held by soft references. A miss calls `Class.getMethods`, which fills `ReflectionData.publicMethods` of the target class. The method `new` is turned into a constructor lookup through `ConstructorFinder`, which keeps its own soft cache of the same kind, and a target of `Class.class` with `forName` loads a class by name.
+
+The method is then called through `sun.reflect.misc.MethodUtil.invoke`. The first use in the process defines a `Trampoline` class in a class loader of its own and keeps its `invoke` method in a static field; every call then goes through `Method.invoke` on that trampoline and on the target method, which fills the method accessor of the root `Method` of each.
+
+Call the method directly. Where a method has to be chosen at run time, a Micronaut `BeanIntrospection` has the bean's methods as `BeanMethod` objects and its properties as `BeanProperty` objects, compiled and called without reflection.
+
+[[problem-feature-descriptor]]
+=== Descriptor constructors
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.beans.FeatureDescriptor` and every subtype of it
 |its constructors
 |`java.beans.FeatureDescriptor+#<init>`
+
+|===
+
+`FeatureDescriptor()` itself does nothing; its subtypes do the work. A `PropertyDescriptor` built from a name and a class looks for the accessors by name at once. In JDK 25, `java.beans.PropertyDescriptor` does this:
+
+[source,java]
+----
+this.readMethodName = readMethodName;
+if (readMethodName != null && getReadMethod() == null) {
+    throw new IntrospectionException("Method not found: " + readMethodName);
+}
+// ...
+Class<?>[] args = { PropertyChangeListener.class };
+this.bound = null != Introspector.findMethod(beanClass, "addPropertyChangeListener", args.length, args);
+----
+
+`Introspector.findMethod` walks the class and its superclasses, reading the methods of each from the static `ClassInfo` cache (see <<problem-bean-info>>) and the generic parameter types of each method with the right name:
+
+[source,java]
+----
+for (Class<?> cl = start; cl != null; cl = cl.getSuperclass()) {
+    Class<?> type = null;
+    Method foundMethod = null;
+    for (Method method : ClassInfo.get(cl).getMethods()) {
+        // make sure method signature matches.
+        if (method.getName().equals(methodName)) {
+            Type[] params = method.getGenericParameterTypes();
+----
+
+That fills `ReflectionData.publicMethods` and a `ClassInfo` entry for every class in the hierarchy, and `genericInfo` of each method looked at. The method found is stored in a `MethodRef`, which keeps it by a `SoftReference` and its generic string, so that it can be found again with `Class.getMethods` if the reference is cleared; building that string parses the generic signature of the method.
+
+The other descriptors are alike. A `PropertyDescriptor` built from `Method` objects works out the property type from their generic types and reads the `@Transient` annotation of each, which fills the annotation data of the method. `EventSetDescriptor` finds its add, remove and listener methods by name through `Introspector.findMethod`. `MethodDescriptor` resolves the generic parameter types of its method. `BeanDescriptor` reads the `@JavaBean` and `@SwingContainer` annotations of the bean class, which fills `Class.annotationData`.
+
+A Micronaut `BeanIntrospection` describes the properties of an `@Introspected` type without descriptors: `getBeanProperties` returns them with their types and annotation metadata, read from what was compiled.
+
+[[problem-property-descriptor]]
+=== PropertyDescriptor methods
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.beans.PropertyDescriptor` and every subtype of it
 |`getPropertyType`, `getReadMethod`, `setReadMethod`, `getWriteMethod`, `setWriteMethod`, `createPropertyEditor`, `getIndexedPropertyType`, `getIndexedReadMethod`, `setIndexedReadMethod`, `getIndexedWriteMethod`, `setIndexedWriteMethod`
 |`java.beans.PropertyDescriptor+#getPropertyType\|getReadMethod\|setReadMethod\|getWriteMethod\|setWriteMethod\|createPropertyEditor\|getIndexedPropertyType\|getIndexedReadMethod\|setIndexedReadMethod\|getIndexedWriteMethod\|setIndexedWriteMethod`
 
+|===
+
+These methods hand out, take, or look up `java.lang.reflect.Method` objects. In JDK 25, `java.beans.PropertyDescriptor` does this:
+
+[source,java]
+----
+public synchronized Method getReadMethod() {
+    Method readMethod = this.readMethodRef.get();
+    if (readMethod == null) {
+        // ...
+        readMethod = Introspector.findMethod(cls, readMethodName, 0);
+----
+
+The descriptor keeps each method in a `MethodRef`:
+
+[source,java]
+----
+void set(Method method) {
+    if (method == null) {
+        this.signature = null;
+        this.methodRef = null;
+        this.typeRef = null;
+    }
+    else {
+        this.signature = method.toGenericString();
+        this.methodRef = new SoftReference<>(method);
+        this.typeRef = new WeakReference<Class<?>>(method.getDeclaringClass());
+    }
+}
+----
+
+So the descriptor holds its methods softly and the class weakly. When the soft reference has been cleared, `MethodRef.get` finds the method again by calling `Class.getMethods` and comparing generic strings. When none has been set yet, `getReadMethod` and `getWriteMethod` look it up by name through `Introspector.findMethod`, which reads the static `ClassInfo` cache and the generic parameter types of each candidate (see <<problem-feature-descriptor>>). The setters and `getPropertyType` resolve the property type from the generic return and parameter types of the methods, which fills their `genericInfo`, and keep it in a weak reference in the descriptor. The indexed methods of `IndexedPropertyDescriptor` do the same with the indexed accessors.
+
+`createPropertyEditor` creates the editor class set on the descriptor: it asks for a constructor taking `Object` with `Class.getConstructor`, which fills `ReflectionData.publicConstructors`, or else calls `Class.newInstance`, which fills `Class.cachedConstructor`.
+
+A Micronaut `BeanProperty` has `get` and `set` compiled for it and knows its type as an `Argument`, so a property can be read and written without a `Method`.
+
+[[problem-method-descriptor]]
+=== MethodDescriptor.getMethod
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.beans.MethodDescriptor`
 |`getMethod`
 |`java.beans.MethodDescriptor#getMethod`
+
+|===
+
+In JDK 25, `java.beans.MethodDescriptor` does this:
+
+[source,java]
+----
+public synchronized Method getMethod() {
+    Method method = this.methodRef.get();
+    if (method == null) {
+        Class<?> cls = getClass0();
+        String name = getName();
+        if ((cls != null) && (name != null)) {
+            Class<?>[] params = getParams();
+            if (params == null) {
+                // ...
+            } else {
+                method = Introspector.findMethod(cls, name, params.length, params);
+            }
+            setMethod(method);
+----
+
+The method is held in a `MethodRef`, by a `SoftReference` (see <<problem-property-descriptor>>). While it is there, the call hands out the `Method`; once it has been cleared, it is found again with `Class.getMethods` on the declaring class or by name through the static `ClassInfo` cache, and `setMethod` resolves its generic parameter types again. Either way the caller gets a `java.lang.reflect.Method` to call reflectively.
+
+A Micronaut `BeanIntrospection` lists the methods of an `@Introspected` type as `BeanMethod` objects, and a bean's `BeanDefinition` has its executable methods as `ExecutableMethod` objects; both are invoked by compiled code.
+
+[[problem-event-set-descriptor]]
+=== EventSetDescriptor methods
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.beans.EventSetDescriptor`
 |`getAddListenerMethod`, `getRemoveListenerMethod`, `getGetListenerMethod`, `getListenerMethods`
 |`java.beans.EventSetDescriptor#getAddListenerMethod\|getRemoveListenerMethod\|getGetListenerMethod\|getListenerMethods`
 
+|===
+
+The add, remove and get methods are kept as `MethodDescriptor` objects, so each call is a `MethodDescriptor.getMethod` (see <<problem-method-descriptor>>). In JDK 25, `java.beans.EventSetDescriptor` builds the listener methods the same way and keeps the array softly:
+
+[source,java]
+----
+public synchronized Method[] getListenerMethods() {
+    Method[] methods = getListenerMethods0();
+    if (methods == null) {
+        if (listenerMethodDescriptors != null) {
+            methods = new Method[listenerMethodDescriptors.length];
+            for (int i = 0; i < methods.length; i++) {
+                methods[i] = listenerMethodDescriptors[i].getMethod();
+            }
+        }
+        setListenerMethods(methods);
+    }
+    return methods;
+}
+----
+
+`setListenerMethods` keeps the array in `listenerMethodsRef`, a `SoftReference`. When it has been cleared, each method is found again, from its own `MethodRef` or by name through the static `ClassInfo` cache.
+
+Register listeners with ordinary calls. In Micronaut, `ApplicationEventPublisher` delivers events to beans that implement `ApplicationEventListener`, with no listener methods looked up.
+
+[[problem-event-handler]]
+=== EventHandler
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.beans.EventHandler`
 |`create`, `invoke`
 |`java.beans.EventHandler#create\|invoke`
+
+|===
+
+`create` makes a dynamic proxy for the listener interface. In JDK 25, `java.beans.EventHandler` does this:
+
+[source,java]
+----
+final ClassLoader loader = getClassLoader(listenerInterface);
+final Class<?>[] interfaces = {listenerInterface};
+return (T) Proxy.newProxyInstance(loader, interfaces, handler);
+----
+
+The first proxy for an interface in a class loader spins a proxy class and defines it in that loader; `Proxy` keeps its constructor in `proxyCache`, a `ClassLoaderValue`, whose map lives in the class loader. Later calls for the same interface and loader reuse it.
+
+Each call of the proxy lands in `invoke`, which follows the property names of the action and the event with getters, and then looks the target method up by name and calls it:
+
+[source,java]
+----
+Method targetMethod = Statement.getMethod(
+             target.getClass(), action, argTypes);
+if (targetMethod == null) {
+    targetMethod = Statement.getMethod(target.getClass(),
+             "set" + NameGenerator.capitalize(action), argTypes);
+}
+// ...
+return MethodUtil.invoke(targetMethod, target, newArgs);
+----
+
+`Statement.getMethod` is `MethodFinder.findMethod`, so the lookups fill its static soft cache and `ReflectionData.publicMethods` of the target class, and `MethodUtil.invoke` calls the method through its trampoline, filling the method accessor of the root `Method` (see <<problem-bean-statement>>). A proxy class defined at run time cannot be in a native image; its interfaces have to be registered ahead of time.
+
+Write the listener as a lambda or a class that calls the target directly.
+
+[[problem-bean-encoder]]
+=== Encoder
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.beans.Encoder` and every subtype of it
 |`writeObject`, `writeStatement`, `writeExpression`, `getPersistenceDelegate`
 |`java.beans.Encoder+#writeObject\|writeStatement\|writeExpression\|getPersistenceDelegate`
 
+|===
+
+An `Encoder`, and its subtype `XMLEncoder`, writes an object as the statements that would rebuild it. In JDK 25, `java.beans.Encoder` finds a persistence delegate for each class it meets:
+
+[source,java]
+----
+public PersistenceDelegate getPersistenceDelegate(Class<?> type) {
+    PersistenceDelegate pd = this.finder.find(type);
+    if (pd == null) {
+        pd = MetaData.getPersistenceDelegate(type);
+        if (pd != null) {
+            this.finder.register(type, pd);
+        }
+    }
+    return pd;
+}
+----
+
+The `finder` is a `PersistenceDelegateFinder` with a `HashMap` registry, one per encoder. On a miss it tries to load a `<name>PersistenceDelegate` class by name and create it with `Class.newInstance`; failing that, `MetaData.getPersistenceDelegate` introspects the class:
+
+[source,java]
+----
+String typeName = type.getName();
+PersistenceDelegate pd = (PersistenceDelegate)getBeanAttribute(type, "persistenceDelegate");
+if (pd == null) {
+    pd = internalPersistenceDelegates.get(typeName);
+    // ...
+        Class<?> c = Class.forName("java.beans.MetaData$" + name.replace('.', '_')
+                                + "_PersistenceDelegate");
+----
+
+`getBeanAttribute` calls `Introspector.getBeanInfo` (see <<problem-bean-info>>). A class with no built-in delegate is remembered by name in `MetaData.internalPersistenceDelegates`, a static `Hashtable`, and its public constructors are searched for `@ConstructorProperties` with `Class.getConstructors`, which fills `ReflectionData.publicConstructors`.
+
+`writeObject` finds the delegate of the object's class and hands the object to it. `writeStatement` executes a copy of the statement against the objects the encoder has built, and `writeExpression` evaluates the expression and writes its value - each one a `Statement` run by name (see <<problem-bean-statement>>).
+
+Write the format with compiled code. For a Micronaut `@Introspected` type, `BeanIntrospection` gives the properties to write and `BeanWrapper` their values, without an encoder.
+
+[[problem-persistence-delegate]]
+=== PersistenceDelegate
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.beans.PersistenceDelegate` and every subtype of it
 |`writeObject`, `instantiate`, `initialize`
 |`java.beans.PersistenceDelegate+#writeObject\|instantiate\|initialize`
 
+|===
+
+In JDK 25, `java.beans.PersistenceDelegate` writes an object by producing an `Expression` that creates it, or by initialising a copy, and `initialize` walks up to the delegate of the superclass:
+
+[source,java]
+----
+protected void initialize(Class<?> type,
+                          Object oldInstance, Object newInstance,
+                          Encoder out)
+{
+    Class<?> superType = type.getSuperclass();
+    PersistenceDelegate info = out.getPersistenceDelegate(superType);
+    info.initialize(superType, oldInstance, newInstance, out);
+}
+----
+
+`DefaultPersistenceDelegate`, used for most beans, reads the constructor arguments by calling the read methods of their `PropertyDescriptor` objects with `MethodUtil.invoke`, and writes every public field and every property:
+
+[source,java]
+----
+private void initBean(Class<?> type, Object oldInstance, Object newInstance, Encoder out) {
+    for (Field field : type.getFields()) {
+        // ...
+            Expression oldGetExp = new Expression(field, "get", new Object[] { oldInstance });
+            Expression newGetExp = new Expression(field, "get", new Object[] { newInstance });
+    // ...
+        info = Introspector.getBeanInfo(type);
+----
+
+So one call fills `ReflectionData.publicFields` of the class, its `BeanInfo` in the thread group's cache and the `ClassInfo` cache (see <<problem-bean-info>>), and `MethodFinder`'s cache for every getter and setter it runs as a `Statement` (see <<problem-bean-statement>>). The delegate itself keeps nothing.
+
+As for `Encoder`, write the format with compiled code or from a Micronaut `BeanIntrospection`.
+
+[[problem-xml-decoder]]
+=== XMLDecoder
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.beans.XMLDecoder`
 |`readObject`
 |`java.beans.XMLDecoder#readObject`
+
+|===
+
+The first `readObject` parses the whole document. In JDK 25, `java.beans.XMLDecoder` does this:
+
+[source,java]
+----
+if (this.array == null) {
+    XMLDecoder.this.handler.parse(XMLDecoder.this.input);
+    this.array = this.handler.getObjects();
+}
+----
+
+Every class the document names is loaded by name - `DocumentHandler.findClass` is `ClassFinder.resolveClass`, which ends in `Class.forName` - and every element becomes a call made by name. An object or property element is run as an `Expression`:
+
+[source,java]
+----
+Expression expression = new Expression(bean, name, args);
+return ValueObjectImpl.create(expression.getValue());
+----
+
+A method element goes to `MethodFinder` and `MethodUtil.invoke` directly. So reading a document fills `MethodFinder`'s and `ConstructorFinder`'s static soft caches and `ReflectionData.publicMethods` for each class it touches (see <<problem-bean-statement>>), and loads whatever classes the document names. The decoder itself keeps only the objects it has read.
+
+Read data with a parser into types known when the code is written; for a Micronaut `@Introspected` type, `BeanIntrospection.instantiate` and its `BeanProperty` setters fill an object without reflection.
+
+[[problem-property-editor]]
+=== PropertyEditorManager.findEditor
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.beans.PropertyEditorManager`
 |`findEditor`
 |`java.beans.PropertyEditorManager#findEditor`
 
 |===
+
+In JDK 25, `PropertyEditorManager.findEditor` asks the `PropertyEditorFinder` of the thread group's `ThreadGroupContext`, which does this:
+
+[source,java]
+----
+public PropertyEditor find(Class<?> type) {
+    Class<?> predefined;
+    synchronized (this.registry) {
+        predefined = this.registry.get(type);
+    }
+    PropertyEditor editor = instantiate(predefined, null);
+    if (editor == null) {
+        editor = super.find(type);
+        if ((editor == null) && (null != type.getEnumConstants())) {
+            editor = new EnumEditor(type);
+        }
+    }
+    return editor;
+}
+----
+
+The `registry` is a `WeakCache` of editor classes, holding only the primitive editors and those registered with `registerEditor`. For any other type, `InstanceFinder.find` tries to load `<name>Editor` by name - with the class loader of the type, then in each package of the search path - and creates what it finds with `Class.newInstance`:
+
+[source,java]
+----
+if (name != null) {
+    type = ClassFinder.findClass(name, type.getClassLoader());
+}
+if (this.type.isAssignableFrom(type)) {
+    @SuppressWarnings("unchecked")
+    T tmp = (T) type.newInstance();
+    return tmp;
+}
+----
+
+The editor found is not remembered, so every call repeats the class loading attempts and creates a new editor; `Class.newInstance` keeps the constructor in `Class.cachedConstructor` of the editor class. For an enum, `getEnumConstants` fills `Class.enumConstants`.
+
+Micronaut converts text and other values with its `ConversionService` and the `TypeConverter` beans registered with it, with no editor looked up by name.
 
 == SERIALIZATION
 
@@ -135,6 +837,9 @@ Java serialization reads the fields, constructors and private `readObject` and `
 Object value = objectInputStream.readObject();
 ----
 
+[[problem-object-input]]
+=== ObjectInputStream
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -143,9 +848,97 @@ Object value = objectInputStream.readObject();
 |`readObject`, `readUnshared`, `defaultReadObject`, `readFields`, `resolveClass`, `resolveProxyClass`
 |`java.io.ObjectInputStream+#readObject\|readUnshared\|defaultReadObject\|readFields\|resolveClass\|resolveProxyClass`
 
+|===
+
+A stream names each class it holds, and reading it loads that class. In JDK 25, `java.io.ObjectInputStream` does this:
+
+[source,java]
+----
+protected Class<?> resolveClass(ObjectStreamClass desc)
+    throws IOException, ClassNotFoundException
+{
+    String name = desc.getName();
+    try {
+        return Class.forName(name, false, latestUserDefinedLoader());
+----
+
+`resolveProxyClass` loads each interface of a proxy by name the same way and asks `Proxy.getProxyClass` for the class, which spins and defines a proxy class the first time and keeps its constructor in `proxyCache`, a `ClassLoaderValue` whose map lives in the class loader.
+
+Once the class is loaded, the descriptor read from the stream is matched with the local descriptor of the class, `ObjectStreamClass.lookup(cl, true)`, which fills the `Caches.localDescs` cache described under <<problem-object-stream-class>>. The object is then created with the serialization constructor held in that descriptor - one that runs only the no-argument constructor of the first class that is not serializable - and its fields are filled, either by the class's private `readObject` method or by the default field reader. The descriptor calls the private method with `Method.invoke`:
+
+[source,java]
+----
+if (readObjectMethod != null) {
+    try {
+        readObjectMethod.invoke(obj, new Object[]{ in });
+----
+
+which fills the method accessor of the root `Method` held in `ReflectionData.declaredMethods` of the class. `defaultReadObject`, called from within such a method, and the default reader write the field values straight into the object through `Unsafe`, at offsets the descriptor's `FieldReflector` computed once:
+
+[source,java]
+----
+switch (typeCodes[i]) {
+    case 'Z' -> UNSAFE.putBoolean(obj, key, ByteArray.getBoolean(buf, off));
+    case 'B' -> UNSAFE.putByte(obj, key, buf[off]);
+----
+
+`readFields` reads the values into a `GetField` without writing them to the object. A record is created through its canonical constructor, found from its record components with `Class.getDeclaredConstructor` and called as a method handle; the descriptor keeps it, and up to ten handles adapted to the field shapes of older streams in its `DeserializationConstructorsCache`. `readUnshared` goes the same way as `readObject`.
+
+Every class the stream reaches is therefore loaded, described and cached, so a stream decides which classes a program loads and creates. In a native image each class that may be deserialized has to be registered for serialization.
+
+Read data in a format whose readers are written or generated at compile time. For a Micronaut `@Introspected` type, `BeanIntrospection.instantiate` and its `BeanProperty` setters build an object from values without reflection.
+
+[[problem-object-output]]
+=== ObjectOutputStream
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.io.ObjectOutputStream` and every subtype of it
 |`writeObject`, `writeUnshared`, `defaultWriteObject`, `putFields`, `writeFields`
 |`java.io.ObjectOutputStream+#writeObject\|writeUnshared\|defaultWriteObject\|putFields\|writeFields`
+
+|===
+
+Writing an object looks up the descriptor of its class, and of each replacement its `writeReplace` method returns. In JDK 25, `java.io.ObjectOutputStream` does this:
+
+[source,java]
+----
+Class<?> cl = obj.getClass();
+ObjectStreamClass desc;
+for (;;) {
+    // REMIND: skip this check for strings/arrays?
+    Class<?> repCl;
+    desc = ObjectStreamClass.lookup(cl, true);
+    if (!desc.hasWriteReplaceMethod() ||
+        (obj = desc.invokeWriteReplace(obj)) == null ||
+        (repCl = obj.getClass()) == cl)
+    {
+        break;
+    }
+    cl = repCl;
+}
+----
+
+`ObjectStreamClass.lookup` fills `Caches.localDescs` for the class and, through the superclass descriptors it builds, for every serializable superclass (see <<problem-object-stream-class>>). The fields are then written by the class's private `writeObject` method, called with `Method.invoke` - which fills the method accessor of its root `Method` - or read out of the object by the default writer through `Unsafe`:
+
+[source,java]
+----
+desc.getPrimFieldValues(obj, primVals);
+bout.write(primVals, 0, primDataSize, false);
+----
+
+`defaultWriteObject`, called from within a `writeObject` method, runs that default writer. `putFields` and `writeFields` fill a `PutField` by name and write it; they touch no reflection themselves, but `writeFields` writes each object value with the same `writeObject0`, so every class it reaches is described and cached in turn. `writeUnshared` goes the same way as `writeObject`.
+
+Write data in a format whose writers are written or generated at compile time. For a Micronaut `@Introspected` type, `BeanIntrospection.getBeanProperties` and `BeanWrapper` give the values to write without reflection.
+
+[[problem-object-stream-class]]
+=== ObjectStreamClass
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.io.ObjectStreamClass`
 |`lookup`, `lookupAny`, `forClass`, `getFields`, `getField`, `getSerialVersionUID`
@@ -153,14 +946,67 @@ Object value = objectInputStream.readObject();
 
 |===
 
+In JDK 25, `lookup` and `lookupAny` read a cache in `java.io.ObjectStreamClass`:
+
+[source,java]
+----
+private static class Caches {
+    /** cache mapping local classes -> descriptors */
+    static final ClassCache<ObjectStreamClass> localDescs =
+        new ClassCache<>() {
+            @Override
+            protected ObjectStreamClass computeValue(Class<?> type) {
+                return new ObjectStreamClass(type);
+            }
+        };
+----
+
+`ClassCache` wraps a `ClassValue` whose values are soft references, so each descriptor lives in the `classValueMap` of the class it describes, goes when the class is unloaded, and can be cleared under memory pressure and built again. `Caches.reflectors`, a second `ClassCache`, keeps a `ConcurrentHashMap` of `FieldReflector` objects per class, one for each shape of fields read or written.
+
+Building a descriptor reflects on the whole class:
+
+[source,java]
+----
+suid = getDeclaredSUID(cl);
+try {
+    fields = getSerialFields(cl);
+    computeFieldOffsets();
+// ...
+    cons = getSerializableConstructor(cl);
+    writeObjectMethod = getPrivateMethod(cl, "writeObject",
+            new Class<?>[]{ObjectOutputStream.class},
+            Void.TYPE);
+----
+
+It reads the `serialVersionUID` and `serialPersistentFields` fields with `Class.getDeclaredField`, or all declared fields with `Class.getDeclaredFields`, filling `ReflectionData.declaredFields`. It looks up the private `writeObject`, `readObject` and `readObjectNoData` methods with `Class.getDeclaredMethod`, filling `ReflectionData.declaredMethods`, and the inheritable `writeReplace` and `readResolve` methods up the hierarchy, and makes each one accessible. The serialization constructor comes from `ReflectionFactory.newConstructorForSerialization`, which looks up the no-argument constructor of the first class that is not serializable and gives it an accessor that creates the serializable class instead. The field offsets for `Unsafe` are taken once, in a `FieldReflector`. The superclass is described too, so one lookup fills the cache for every serializable class above it. `lookup` returns `null` for a class that is not `Serializable`; `lookupAny` describes any class.
+
+The other methods read a descriptor that was already built. `forClass`, `getFields` and `getField` return what the constructor worked out and fill no cache themselves - `getFields` hands out `ObjectStreamField` objects that hold the `java.lang.reflect.Field` of each serialized field. `getSerialVersionUID` of a class that declares no `serialVersionUID` computes the default one the first time and keeps it in the descriptor's `suid` field:
+
+[source,java]
+----
+if (suid == null) {
+    if (isRecord)
+        return 0L;
+
+    suid = computeDefaultSUID(cl);
+}
+----
+
+`computeDefaultSUID` hashes the name, modifiers, interfaces, fields, constructors and methods of the class, reading them with `Class.getDeclaredFields`, `Class.getDeclaredConstructors` and `Class.getDeclaredMethods`.
+
+Declare a `serialVersionUID` constant where Java serialization has to be used; where it need not be, write data in a format whose readers and writers are generated at compile time, such as one built from a Micronaut `BeanIntrospection`.
+
 == UNSAFE
 
-`sun.misc.Unsafe` reaches fields by their offset and allocates instances without calling a constructor; `sun.reflect.ReflectionFactory` makes the constructors serialization uses.
+`sun.misc.Unsafe` reaches fields by their offset and allocates instances without calling a constructor; `sun.reflect.ReflectionFactory` makes the constructors and method handles serialization uses.
 
 [source,java]
 ----
 Object instance = unsafe.allocateInstance(type);
 ----
+
+[[problem-unsafe]]
+=== sun.misc.Unsafe
 
 [cols="3,4,4"]
 |===
@@ -170,11 +1016,81 @@ Object instance = unsafe.allocateInstance(type);
 |Every method and constructor
 |`sun.misc.Unsafe#*`
 
+|===
+
+`Unsafe` itself keeps nothing: every method forwards to `jdk.internal.misc.Unsafe`, most of them to a native method. It is reported for what surrounds it. Its only instance is not handed to application code - in JDK 25, `sun.misc.Unsafe` does this:
+
+[source,java]
+----
+@CallerSensitive
+public static Unsafe getUnsafe() {
+    Class<?> caller = Reflection.getCallerClass();
+    if (!VM.isSystemDomainLoader(caller.getClassLoader()))
+        throw new SecurityException("Unsafe");
+    return theUnsafe;
+}
+----
+
+So a project reads the private `theUnsafe` field reflectively, which fills the declared fields of `Unsafe`. The field offsets `Unsafe` works with come from a `java.lang.reflect.Field` too, which the project has to look up first - filling the declared fields of its own class:
+
+[source,java]
+----
+public long objectFieldOffset(Field f) {
+    if (f == null) {
+        throw new NullPointerException();
+    }
+    Class<?> declaringClass = f.getDeclaringClass();
+    // ...
+    beforeMemoryAccess();
+    return theInternalUnsafe.objectFieldOffset(f);
+}
+----
+
+The memory-access methods are deprecated for removal, and `beforeMemoryAccess` warns on their first use, or throws, depending on `--sun-misc-unsafe-memory-access`. `allocateInstance` asks the virtual machine for an object without running a constructor, which initializes the class; in a native image the class has to be registered for it.
+
+A `VarHandle` replaces the field access and the compare-and-set operations (it is reported as `HANDLES`), and `java.lang.foreign` replaces off-heap memory. Where the instance is of a Micronaut bean or introspected type, `BeanIntrospection.instantiate` creates it through the constructor that was compiled for it.
+
+[[problem-reflection-factory]]
+=== sun.reflect.ReflectionFactory
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`sun.reflect.ReflectionFactory`
 |Every method and constructor
 |`sun.reflect.ReflectionFactory#*`
 
 |===
+
+`sun.reflect.ReflectionFactory` forwards to `jdk.internal.reflect.ReflectionFactory`, which is what `ObjectInputStream` uses to create an object the way serialization does. In JDK 25, `jdk.internal.reflect.ReflectionFactory` does this:
+
+[source,java]
+----
+Constructor<?> constructorToCall;
+try {
+    constructorToCall = initCl.getDeclaredConstructor();
+    // ...
+return generateConstructor(cl, constructorToCall);
+----
+
+It walks up past the serializable superclasses and looks up the no-argument constructor of the first class that is not serializable, filling the declared constructors of that class. The constructor it hands back is new each time:
+
+[source,java]
+----
+ConstructorAccessor acc = MethodHandleAccessorFactory
+        .newSerializableConstructorAccessor(cl, constructorToCall);
+// Unlike other root constructors, this constructor is not copied for mutation
+// but directly mutated, as it is not cached. To cache this constructor,
+// setAccessible call must be done on a copy and return that copy instead.
+Constructor<?> ctor = langReflectAccess.newConstructorWithAccessor(constructorToCall, acc);
+ctor.setAccessible(true);
+return ctor;
+----
+
+So the constructor is not cached, but the accessor behind it is a method handle that allocates the class and runs the superclass constructor, and the class is initialized first. The other methods - `readObjectForSerialization`, `writeReplaceForSerialization` and the rest - look up the private serialization methods with `getDeclaredMethod`, filling the declared methods of the class, and turn them into method handles.
+
+A project that needs objects created without their own constructor rarely needs it outside serialization; for a Micronaut bean or introspected type, `BeanIntrospection.instantiate` creates it through a compiled constructor.
 
 == INSTRUMENTATION
 
@@ -184,6 +1100,9 @@ An agent's `Instrumentation` lists, redefines and retransforms the loaded classe
 ----
 Class<?>[] loaded = instrumentation.getAllLoadedClasses();
 ----
+
+[[problem-instrumentation]]
+=== Instrumentation
 
 [cols="3,4,4"]
 |===
@@ -195,6 +1114,43 @@ Class<?>[] loaded = instrumentation.getAllLoadedClasses();
 
 |===
 
+An `Instrumentation` exists only when a Java agent is loaded, and the JDK's one implementation hands almost every call straight to the virtual machine's agent. In JDK 25, `sun.instrument.InstrumentationImpl` does this:
+
+[source,java]
+----
+public Class[] getAllLoadedClasses() {
+    trace("getAllLoadedClasses");
+    return getAllLoadedClasses0(mNativeAgent);
+}
+----
+
+`getAllLoadedClasses`, `getInitiatedClasses`, `retransformClasses`, `redefineClasses`, `appendToBootstrapClassLoaderSearch`, `appendToSystemClassLoaderSearch` and `getObjectSize` are native calls into JVM TI. None of them fills a cache on the Java side: listing hands out every `Class` the virtual machine has loaded, and the two `appendTo...` methods make classes of another jar loadable by name.
+
+Changing a class works the other way - it empties caches. `redefineClasses` replaces the bytes of loaded classes, and `retransformClasses` has the registered transformers produce new ones. The reflection data of a class records which version of the class it was built from. In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+// Incremented by the VM on each call to JVM TI RedefineClasses()
+// that redefines this class or a superclass.
+private transient volatile int classRedefinedCount;
+
+// Lazily create and cache ReflectionData
+private ReflectionData<T> reflectionData() {
+    SoftReference<ReflectionData<T>> reflectionData = this.reflectionData;
+    int classRedefinedCount = this.classRedefinedCount;
+    ReflectionData<T> rd;
+    if (reflectionData != null &&
+        (rd = reflectionData.get()) != null &&
+        rd.redefinedCount == classRedefinedCount) {
+        return rd;
+    }
+    // ...
+----
+
+After the virtual machine redefines a class, the next reflective call on the class or its subclasses throws the old `ReflectionData` away and fills a new one, so the declared members, names and interfaces are fetched from the virtual machine again. `addTransformer` registers a `ClassFileTransformer` that is then handed the bytes of every class loaded afterwards, and `redefineModule` adds reads, exports, opens, uses and provides to a named module at run time.
+
+There is no general replacement. Code that needs an agent belongs in a tool, a test or a monitoring agent rather than in the application, and a project that transforms classes can often do so at build time instead.
+
 == PROXY
 
 A `java.lang.reflect.Proxy` class is defined at run time and lives as long as its class loader; `MethodHandleProxies` defines a hidden class for an interface; `InvocationHandler.invokeDefault` invokes a default method reflectively.
@@ -204,6 +1160,9 @@ A `java.lang.reflect.Proxy` class is defined at run time and lives as long as it
 Object proxy = Proxy.newProxyInstance(loader, interfaces, handler);
 ----
 
+[[problem-proxy]]
+=== Proxy
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -212,15 +1171,114 @@ Object proxy = Proxy.newProxyInstance(loader, interfaces, handler);
 |Every method and constructor
 |`java.lang.reflect.Proxy#*`
 
+|===
+
+In JDK 25, `java.lang.reflect.Proxy` does this:
+
+[source,java]
+----
+if (interfaces.length == 1) {
+    Class<?> intf = interfaces[0];
+    return proxyCache.sub(intf).computeIfAbsent(
+        loader,
+        (ld, clv) -> new ProxyBuilder(ld, clv.key()).build()
+    );
+----
+
+`proxyCache` is a `ClassLoaderValue<Constructor<?>>`, whose entries are kept in a `ConcurrentHashMap` in the `classLoaderValueMap` field of the class loader - so the proxy class and its accessible constructor live as long as that loader, for the system loader as long as the process. The first call for a combination of interfaces generates a class file and defines it:
+
+[source,java]
+----
+byte[] proxyClassFile = ProxyGenerator.generateProxyClass(loader, proxyName, interfaces,
+                                                          context.accessFlags() | Modifier.FINAL);
+try {
+    Class<?> pc = JLA.defineClass(loader, proxyName, proxyClassFile,
+                                  null, "__dynamic_proxy__");
+----
+
+Generating it calls `getMethods` on every interface, filling their public methods, and the class it writes looks each method up again in its static initializer, with `Class.forName` and `Class.getMethod`, to have the `java.lang.reflect.Method` it passes to the `InvocationHandler` on every call. `build` then fills the public constructors of the proxy class with `getConstructor`. A class defined at run time cannot be in a native image, where the interface lists have to be registered for the proxy to be built ahead of time.
+
+Micronaut writes the implementation of an interface at compilation time instead: an `@Introduction` advice, or `@Around` for a class, backed by a `MethodInterceptor` bean.
+
+[[problem-invoke-default]]
+=== InvocationHandler.invokeDefault
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.reflect.InvocationHandler`
 |`invokeDefault`
 |`java.lang.reflect.InvocationHandler#invokeDefault`
+
+|===
+
+`invokeDefault` hands over to `Proxy.invokeDefault`, which looks up a method handle for the default method and keeps it. In JDK 25, `java.lang.reflect.Proxy` does this:
+
+[source,java]
+----
+ConcurrentHashMap<Method, MethodHandle> methods = defaultMethodMap(proxyClass);
+MethodHandle superMH = methods.get(method);
+if (superMH == null) {
+    // ...
+    dmh = proxyClassLookup(lookup, proxyClass)
+            .findSpecial(proxyInterface, method.getName(), type, proxyClass)
+            .withVarargs(false);
+----
+
+`defaultMethodMap` reads `DEFAULT_METHODS_MAP`, a `ClassValue` holding a `ConcurrentHashMap<Method, MethodHandle>` for each proxy class, so the handle lives as long as the proxy class. Getting the lookup of the proxy class is itself reflective:
+
+[source,java]
+----
+Method m = proxyClass.getDeclaredMethod("proxyClassLookup", MethodHandles.Lookup.class);
+m.setAccessible(true);
+return (MethodHandles.Lookup) m.invoke(null, caller);
+----
+
+That fills the declared methods of the proxy class and creates a method accessor for `proxyClassLookup`. Where the method is inherited through another interface, `getInterfaces` of the proxy class and `getMethod` of the proxy interfaces are called to find which one declares it.
+
+Where the proxy exists to add behaviour to an interface, a Micronaut `@Introduction` advice writes the implementation at compilation time, and there is no invocation handler to call a default method from.
+
+[[problem-method-handle-proxies]]
+=== MethodHandleProxies
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.lang.invoke.MethodHandleProxies`
 |Every method and constructor
 |`java.lang.invoke.MethodHandleProxies#*`
 
 |===
+
+`asInterfaceInstance` implements a single-method interface with a method handle, by defining a hidden class for the interface. In JDK 25, `java.lang.invoke.MethodHandleProxies` does this:
+
+[source,java]
+----
+private static final ClassValue<WeakReferenceHolder<Class<?>>> PROXIES = new ClassValue<>() {
+    @Override
+    protected WeakReferenceHolder<Class<?>> computeValue(Class<?> intfc) {
+        return new WeakReferenceHolder<>(newProxyClass(intfc));
+    }
+};
+----
+
+The hidden class is held weakly in the `PROXIES` `ClassValue` of the interface, and spun again when it has been collected. Spinning it calls `getMethods` on the interface, filling its public methods, defines a dynamic module for the types its method refers to, and defines the class:
+
+[source,java]
+----
+var definer = new Lookup(intfc).makeHiddenClassDefiner(className, template, DUMPER);
+
+Lookup lookup = definer.defineClassAsLookup(true);
+// cache the wrapper type
+var ret = lookup.lookupClass();
+WRAPPER_TYPES.add(ret);
+----
+
+`WRAPPER_TYPES` is a static set, weakly keyed, of the classes spun, which `isWrapperInstance` reads. Each instance is then created through a constructor handle found with `findConstructor`. A class defined at run time cannot be in a native image.
+
+A lambda or method reference implements the interface without a call the check reports, and a Micronaut `@Introduction` advice writes an implementation at compilation time.
 
 == HANDLES
 
@@ -232,6 +1290,9 @@ MethodHandles.Lookup lookup = MethodHandles.lookup();
 VarHandle next = lookup.findVarHandle(Node.class, "next", Node.class);
 ----
 
+[[problem-method-handles]]
+=== java.lang.invoke
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -240,13 +1301,109 @@ VarHandle next = lookup.findVarHandle(Node.class, "next", Node.class);
 |Every method and constructor
 |`java.lang.invoke.*#*`
 
+|===
+
+A lookup does not go through the reflection data of a class: it names the member and asks the virtual machine to resolve it. In JDK 25, `MethodHandles.Lookup` does this:
+
+[source,java]
+----
+byte refKind = (refc.isInterface() ? REF_invokeInterface : REF_invokeVirtual);
+MemberName method = resolveOrFail(refKind, refc, name, type);
+return getDirectMethod(refKind, refc, method, findBoundCallerLookup(method));
+----
+
+and `MemberName.Factory` resolves the name natively:
+
+[source,java]
+----
+m = MethodHandleNatives.resolve(m, lookupClass, allowedModes, speculativeResolve);
+----
+
+That links and loads what the member refers to, but fills no `ReflectionData`. What a handle does keep is its code. A direct handle takes a `LambdaForm` for the shape of its type, cached in the form of the erased `MethodType`:
+
+[source,java]
+----
+LambdaForm lform = mtype.form().cachedLambdaForm(which);
+if (lform != null)  return lform;
+lform = makePreparedLambdaForm(mtype, which);
+return mtype.form().setCachedLambdaForm(which, lform);
+----
+
+`MethodTypeForm` holds its lambda forms in an array of `SoftReference`s, and every `MethodType` is interned in the static `MethodType.internTable`. A lambda form that is run often is compiled to a class by `InvokerBytecodeGenerator`, and the combinators (`MethodHandles.filterArguments`, `insertArguments`, ...) build further forms. `LambdaMetafactory`, which the compiler calls from `invokedynamic`, spins a hidden class each time it is called, and `StringConcatFactory` builds a tree of handles or spins a hidden class, which it keeps by type in a static `CACHE` of soft references; the compiler's own calls are not in the source and are not reported. A `VarHandle` is reported as well, for its lookup and for its access methods.
+
+The members a Micronaut bean or introspected type exposes are reached through its `BeanDefinition`, `ExecutableMethod` or `BeanIntrospection`, whose calls are compiled. Where a handle is the reason for the code - a `VarHandle` for a compare-and-set on a field - the category is there to be allowed.
+
+[[problem-object-methods]]
+=== ObjectMethods
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.runtime.ObjectMethods`
 |Every method and constructor
 |`java.lang.runtime.ObjectMethods#*`
 
+|===
+
+`ObjectMethods.bootstrap` is what the compiler links the `equals`, `hashCode` and `toString` of a record to. In JDK 25, `java.lang.runtime.ObjectMethods` does this:
+
+[source,java]
+----
+MethodHandle handle = switch (methodName) {
+    case "equals"   -> {
+        // ...
+        yield makeEquals(recordClass, getterList);
+    }
+----
+
+It keeps nothing of its own: each call combines the getter handles it is given with `MethodHandles.dropArguments`, `guardWithTest` and the like into a new tree of handles, and `toString` asks `StringConcatFactory` for a concatenation. The lambda forms of that tree are cached in the `MethodTypeForm`s of their types, as for any handle. The compiler links it once per record method; a call written in source makes the whole tree again each time.
+
+A record's own `equals`, `hashCode` and `toString` are not reported. Code that needs the components of a record without reflection can have them from a Micronaut `BeanIntrospection` of it.
+
+[[problem-switch-bootstraps]]
+=== SwitchBootstraps
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.runtime.SwitchBootstraps`
 |Every method and constructor
 |`java.lang.runtime.SwitchBootstraps#*`
+
+|===
+
+`typeSwitch` and `enumSwitch` are what the compiler links a pattern `switch` to. In JDK 25, `java.lang.runtime.SwitchBootstraps` does this:
+
+[source,java]
+----
+// this class is linked at the indy callsite; so define a hidden nestmate
+MethodHandles.Lookup lookup;
+lookup = caller.defineHiddenClass(classBytes, true, NESTMATE, STRONG);
+MethodHandle typeSwitch = lookup.findStatic(lookup.lookupClass(),
+                                            "typeSwitch",
+                                            addExtraInfo ? MT_TYPE_SWITCH_EXTRA : MT_TYPE_SWITCH);
+----
+
+Every call generates and defines a hidden class, and keeps it only through the handle it returns. An `enumSwitch` over the constants of one enum maps them by ordinal instead, taking the constants of the enum as `EnumSet` does:
+
+[source,java]
+----
+T[] constants = SharedSecrets.getJavaLangAccess()
+                             .getEnumConstantsShared(enumClass);
+----
+
+That fills `Class.enumConstants` of the enum, and the map is kept in a `MappedEnumCache` bound to the call site. An enum constant among other labels is an `EnumDesc`, resolved on first match with `resolveConstantDesc` - which loads the class and fills its `enumConstantDirectory`.
+
+A `switch` the compiler writes is not reported; only a call to the bootstraps in source is.
+
+[[problem-constant-resolution]]
+=== Resolving a constant description
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.lang.constant.ConstantDesc` and every subtype of it
 |`resolveConstantDesc`
@@ -256,11 +1413,73 @@ VarHandle next = lookup.findVarHandle(Node.class, "next", Node.class);
 |`resolveCallSiteDesc`
 |`java.lang.constant.DynamicCallSiteDesc#resolveCallSiteDesc`
 
+|===
+
+A description names a class, a method or a constant by strings; resolving it looks it up by those names. In JDK 25, the description of a class does this:
+
+[source,java]
+----
+public Class<?> resolveConstantDesc(MethodHandles.Lookup lookup)
+        throws ReflectiveOperationException {
+    return lookup.findClass(internalToBinary(internalName()));
+}
+----
+
+and `Lookup.findClass` calls `Class.forName(targetName, false, lookupClass.getClassLoader())`, which loads the class. A method handle description resolves its owner that way and then calls `findStatic`, `findVirtual`, `findGetter` and the rest by name. A dynamic constant, and a call site with `resolveCallSiteDesc`, resolve their bootstrap method and invoke it:
+
+[source,java]
+----
+MethodHandle bsm = bootstrapMethod.resolveConstantDesc(lookup);
+Object[] args = new Object[bootstrapArgs.length + 3];
+args[0] = lookup;
+args[1] = invocationName;
+args[2] = invocationType.resolveConstantDesc(lookup);
+System.arraycopy(bootstrapArgs, 0, args, 3, bootstrapArgs.length);
+return (CallSite) bsm.invokeWithArguments(args);
+----
+
+Resolution keeps nothing of its own; what it fills is what the lookups and bootstraps it calls fill. An `EnumDesc` resolves through `Enum.valueOf`, filling `Class.enumConstants` and `enumConstantDirectory` of the enum.
+
+Where the class, method or constant is known when the code is written, refer to it directly - a class literal, a method reference, the constant itself.
+
+[[problem-foreign-linker]]
+=== Linker
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.foreign.Linker` and every subtype of it
 |`downcallHandle`, `upcallStub`
 |`java.lang.foreign.Linker+#downcallHandle\|upcallStub`
 
 |===
+
+`Linker.nativeLinker()` returns one linker for the platform, held in a static field. In JDK 25, `jdk.internal.foreign.abi.AbstractLinker` does this:
+
+[source,java]
+----
+return DOWNCALL_CACHE.get(new LinkRequest(function, optionSet), linkRequest ->  {
+    FunctionDescriptor fd = linkRequest.descriptor();
+    MethodType type = fd.toMethodType();
+    MethodHandle handle = arrangeDowncall(type, fd, linkRequest.options());
+    // ...
+    return handle;
+});
+----
+
+`DOWNCALL_CACHE` and `UPCALL_CACHE` are `SoftReferenceCache`s - a `ConcurrentHashMap` of soft references - on the linker, keyed by the function descriptor and options, so the handle for a descriptor lives until memory runs short. Arranging a downcall asks the virtual machine for a native stub, cached again in the static `NEP_CACHE` of `NativeEntryPoint`, and specialises the argument handling into a hidden class:
+
+[source,java]
+----
+MethodHandles.Lookup definedClassLookup = MethodHandles.lookup()
+        .defineHiddenClassWithClassData(bytes, leafHandle, false);
+return definedClassLookup.findStatic(definedClassLookup.lookupClass(), METHOD_NAME, callerMethodType);
+----
+
+An upcall stub does the same for the Java side. Both are restricted methods, checked with `Reflection.ensureNativeAccess`. A native image has to know the function descriptors ahead of time to have the stubs.
+
+There is nothing simpler to call native code with; a project that links native functions allows the category.
 
 == SERVICE_LOADING
 
@@ -271,6 +1490,9 @@ A service loader finds implementation classes by name and instantiates them refl
 ServiceLoader<Codec> codecs = ServiceLoader.load(Codec.class);
 ----
 
+[[problem-service-loader]]
+=== ServiceLoader
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -279,15 +1501,128 @@ ServiceLoader<Codec> codecs = ServiceLoader.load(Codec.class);
 |Every method and constructor
 |`java.util.ServiceLoader#*`
 
+|===
+
+A `ServiceLoader` reads the names of providers from the `provides` clauses of named modules and from the `META-INF/services` files of its class loader, and loads each class by that name. In JDK 25, `java.util.ServiceLoader` does this for a provider on the class path:
+
+[source,java]
+----
+String cn = pending.next();
+try {
+    return Class.forName(cn, false, loader);
+} catch (ClassNotFoundException x) {
+    fail(service, "Provider " + cn + " not found");
+    return null;
+}
+----
+
+A provider in a named module is loaded with `Class.forName(module, cn)`. Every provider class is then asked for its public no-argument constructor, or - in an explicit module - for a public static `provider()` method first:
+
+[source,java]
+----
+private Constructor<?> getConstructor(Class<?> clazz) {
+    Constructor<?> ctor = null;
+    try {
+        ctor = clazz.getConstructor();
+    } catch (NoSuchMethodException ex) {
+        String cn = clazz.getName();
+        fail(service, cn + " Unable to get public no-arg constructor", ex);
+    }
+    if (inExplicitModule(clazz))
+        ctor.setAccessible(true);
+    return ctor;
+}
+----
+
+`getConstructor` fills `ReflectionData.publicConstructors` of the provider class, and looking for `provider()` fills its `ReflectionData.declaredPublicMethods`, both held by a `SoftReference` from the class. Iterating instantiates each provider with `Constructor.newInstance` - which creates a constructor accessor on the root constructor - and keeps the instances in the loader:
+
+[source,java]
+----
+if (index < instantiatedProviders.size()) {
+    next = instantiatedProviders.get(index);
+} else {
+    next = lookupIterator1.next().get();
+    instantiatedProviders.add(next);
+}
+----
+
+`instantiatedProviders`, and `loadedProviders` for `stream()`, are lists in the `ServiceLoader` instance, so they live as long as the loader object does; `reload()` clears them. A new `ServiceLoader` loads and instantiates everything again.
+
+In a Micronaut application, implementations are best found as beans: a `BeanContext` finds every bean of a type from the bean definitions the compiler wrote, and instantiates them without reflection.
+
+[[problem-service-provider]]
+=== ServiceLoader.Provider
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.util.ServiceLoader.Provider` and every subtype of it
 |`get`
 |`java.util.ServiceLoader.Provider+#get`
+
+|===
+
+`ServiceLoader.stream()` hands out `Provider` objects that have loaded the class and found its constructor or factory method, but not yet created an instance. `get()` creates one. In JDK 25, `ServiceLoader.ProviderImpl` does this:
+
+[source,java]
+----
+public S get() {
+    if (factoryMethod != null) {
+        return invokeFactoryMethod();
+    } else {
+        return newInstance();
+    }
+}
+----
+
+`invokeFactoryMethod` calls `Method.invoke` on the `provider()` method and `newInstance` calls `Constructor.newInstance`, so the first call creates a method or constructor accessor and stores it on the root member in the reflection data of the provider class. The instance itself is not kept: every call to `get()` creates a new one. `Provider.type()` only returns the class already loaded and is not reported.
+
+Where the class is all that is needed, `type()` gives it without an instance. In a Micronaut application, a bean of the type is found and created from its compiled bean definition instead.
+
+[[problem-soft-service-loader]]
+=== SoftServiceLoader
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`io.micronaut.core.io.service.SoftServiceLoader`
 |Every method and constructor
 |`io.micronaut.core.io.service.SoftServiceLoader#*`
 
 |===
+
+`SoftServiceLoader` is Micronaut's own service loader. It first looks for the service in a table of pre-computed service loaders held by `StaticOptimizations`, which a build can generate ahead of time; only when there is none does it scan the `META-INF/services` files of its class loader itself. In Micronaut 5.1, `io.micronaut.core.io.service.SoftServiceLoader` does this for the scan:
+
+[source,java]
+----
+ServiceCollector<S> collector = newCollector(name, condition, classLoader, className -> {
+    try {
+        @SuppressWarnings("unchecked") final Class<S> loadedClass =
+                (Class<S>) Class.forName(className, false, classLoader);
+        S result = instantiate(loadedClass);
+        // ...
+----
+
+Every class named is loaded with `Class.forName`, and `instantiate` creates it with a method handle from `MethodHandles.publicLookup().findConstructor`, falling back to reflection when a public lookup cannot reach the constructor:
+
+[source,java]
+----
+private static <S> S instantiateUsingReflection(Class<S> clazz) throws ReflectiveOperationException {
+    Constructor<S> constructor = clazz.getDeclaredConstructor();
+    if (!constructor.canAccess(null)) {
+        // ...
+            constructor.setAccessible(true);
+        // ...
+    }
+    return constructor.newInstance();
+}
+----
+
+`SoftServiceLoader` keeps no instances: `collectAll` loads and instantiates the providers on every call. Iterating keeps the `ServiceDefinition` objects - each holding the loaded class - in the loader instance, and `ServiceDefinition.load()` creates a new instance on every call with `getDeclaredConstructor().newInstance()`. The reflective path fills `ReflectionData.declaredConstructors` of each provider class and stores a constructor accessor on its root constructor; the method handle path resolves the constructor in the virtual machine and does not touch the reflection data. With the table present, the services come from a `StaticServiceLoader` generated ahead of time, which creates them directly or through the same `instantiate`.
+
+A build that generates the `StaticOptimizations` table ahead of time avoids the scan and the loading by name. Where the implementations can be beans, a `BeanContext` finds and creates them from their compiled bean definitions instead.
 
 == CLASS_LOADING
 
@@ -298,6 +1633,9 @@ A class loaded by name is out of sight of a native image, and a class defined at
 Class<?> plugin = Class.forName("com.example.Plugin");
 ----
 
+[[problem-class-for-name]]
+=== Class.forName
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -306,13 +1644,131 @@ Class<?> plugin = Class.forName("com.example.Plugin");
 |`forName`
 |`java.lang.Class#forName`
 
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+public static Class<?> forName(String className)
+            throws ClassNotFoundException {
+    Class<?> caller = Reflection.getCallerClass();
+    return forName(className, caller);
+}
+// ...
+private static Class<?> forName(String className, Class<?> caller)
+        throws ClassNotFoundException {
+    ClassLoader loader = (caller == null) ? ClassLoader.getSystemClassLoader()
+                                          : ClassLoader.getClassLoader(caller);
+    return forName0(className, true, loader, caller);
+}
+----
+
+`forName0` is a native call: the virtual machine asks the class loader for the class, loading it if it is not loaded yet, and - for the one-argument form, or with `initialize` set to `true` - runs its static initializer. `forName(Module, String)` asks the module's class loader directly and returns `null` rather than throwing when the class is not there. No reflection cache is filled on the Java side: what is remembered is that the loader has loaded the class, which is the virtual machine's own record, and the `Class` object is kept for as long as its loader lives. It is reported because the class is named by a string: nothing tells a build or a native image which class is needed, so it has to be registered for reflection.
+
+Where the class is known when the code is written, a class literal names it - `Plugin.class` - and the compiler and a native image can see it. Where implementations are chosen at run time, Micronaut beans with `@Requires` or qualifiers choose between compiled bean definitions.
+
+[[problem-class-loader]]
+=== ClassLoader
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.ClassLoader` and every subtype of it
 |`loadClass`, `findClass`, `findLoadedClass`, `findSystemClass`, `defineClass`, `resolveClass`
 |`java.lang.ClassLoader+#loadClass\|findClass\|findLoadedClass\|findSystemClass\|defineClass\|resolveClass`
 
+|===
+
+In JDK 25, `java.lang.ClassLoader` does this:
+
+[source,java]
+----
+synchronized (getClassLoadingLock(name)) {
+    // First, check if the class has already been loaded
+    Class<?> c = findLoadedClass(name);
+    if (c == null) {
+        // ...
+            if (parent != null) {
+                c = parent.loadClass(name, false);
+            } else {
+                c = findBootstrapClassOrNull(name);
+            }
+        // ...
+        if (c == null) {
+            // ...
+            c = findClass(name);
+----
+
+The built-in loaders of the JDK override `loadClass` with a module-aware search, but follow the same steps. `findLoadedClass` asks the virtual machine for a class this loader has already been recorded for; `findSystemClass` is `getSystemClassLoader().loadClass(name)`; and `resolveClass` in JDK 25 does nothing beyond a null check. For a parallel capable loader, `getClassLoadingLock` puts one lock object per class name into `parallelLockMap`, a `ConcurrentHashMap` in the loader that keeps them.
+
+`defineClass` turns bytes into a new class. The virtual machine records the class in the loader, and the loader keeps its package:
+
+[source,java]
+----
+// The classes loaded by this class loader. The only purpose of this table
+// is to keep the classes from being GC'ed until the loader is GC'ed.
+private final ArrayList<Class<?>> classes = new ArrayList<>();
+----
+
+The virtual machine adds every class defined to the loader to `classes`, and `postDefineClass` adds its package to `packages`, a `ConcurrentHashMap` of the loader, so a class loaded or defined lives as long as its loader does. A class defined from bytes made at run time cannot be in a native image; a class loaded by name has to be registered for reflection.
+
+A class known when the code is written is best named with a class literal. Code that has to define classes at run time - a plugin system, a script engine - is rarely something a Micronaut application needs; compiled bean definitions and introspections cover most of what such loaders are used for.
+
+[[problem-module-layer]]
+=== ModuleLayer
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.ModuleLayer`
 |`defineModules`, `defineModulesWithOneLoader`, `defineModulesWithManyLoaders`
 |`java.lang.ModuleLayer#defineModules\|defineModulesWithOneLoader\|defineModulesWithManyLoaders`
+
+|===
+
+Defining a layer creates modules at run time and binds them to class loaders - new ones, for `defineModulesWithOneLoader` and `defineModulesWithManyLoaders`. In JDK 25, `java.lang.ModuleLayer` does this:
+
+[source,java]
+----
+try {
+    Loader loader = new Loader(cf.modules(), parentLoader);
+    loader.initRemotePackageMap(cf, parents);
+    ModuleLayer layer = new ModuleLayer(cf, parents, mn -> loader);
+    return new Controller(layer);
+} catch (IllegalArgumentException | IllegalStateException e) {
+    throw new LayerInstantiationException(e.getMessage());
+}
+----
+
+The constructor of the layer calls `Module.defineModules`, which defines every module to the virtual machine and sets up its reads, exports and opens. The layer is then remembered by every loader it uses:
+
+[source,java]
+----
+void bindToLoader(ClassLoader loader) {
+    // CLV.computeIfAbsent(loader, (cl, clv) -> new CopyOnWriteArrayList<>())
+    List<ModuleLayer> list = CLV.get(loader);
+    if (list == null) {
+        list = new CopyOnWriteArrayList<>();
+        List<ModuleLayer> previous = CLV.putIfAbsent(loader, list);
+        if (previous != null) list = previous;
+    }
+    list.add(this);
+}
+----
+
+`CLV` is a `ClassLoaderValue`, stored in a map inside each class loader, so the layer lives as long as its loaders do; the layer also builds a `ServicesCatalog` of the services its modules provide, kept in the layer, the first time a `ServiceLoader` looks in it. Classes of these modules are then loaded by name through the new loaders, out of sight of a build.
+
+There is no replacement inside a single application: the modules of an application are best resolved at startup, as the boot layer, where a build can see them.
+
+[[problem-resource-bundle]]
+=== ResourceBundle
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.util.ResourceBundle`
 |`getBundle`
@@ -322,11 +1778,66 @@ Class<?> plugin = Class.forName("com.example.Plugin");
 |`newBundle`
 |`java.util.ResourceBundle.Control+#newBundle`
 
+|===
+
+`getBundle` works through the candidate locales, and for each asks `Control.newBundle` for a bundle - a class of that name first, then a properties file. In JDK 25, `ResourceBundle.Control` does this:
+
+[source,java]
+----
+if (format.equals("java.class")) {
+    try {
+        Class<?> c = loader.loadClass(bundleName);
+        // ...
+                Constructor<ResourceBundle> ctor = bundleClass.getDeclaredConstructor();
+                // ...
+                ctor.setAccessible(true);
+                bundle = ctor.newInstance((Object[]) null);
+----
+
+Every candidate name is tried with `loadClass`, whether or not a class of that name exists, and a class that is found is created with `getDeclaredConstructor` and `Constructor.newInstance` - filling its `ReflectionData.declaredConstructors` and storing a constructor accessor on the root constructor. For a caller in a named module, `getBundle` looks for `ResourceBundleProvider` services with a `ServiceLoader` first, and otherwise loads the bundle class from the module by name. What is found is kept in a static cache of `ResourceBundle`:
+
+[source,java]
+----
+private static final ConcurrentMap<CacheKey, BundleReference> cacheList
+    = new ConcurrentHashMap<>(INITIAL_CACHE_SIZE);
+----
+
+`cacheList` maps the base name, locale and loader or module to a `BundleReference`, which is a `SoftReference` to the bundle, so a bundle stays until memory runs short, its loader goes away or `clearCache` is called; a `Control` can also give it a time to live. Calling `newBundle` directly skips the cache and loads and creates the bundle again every time.
+
+Where the messages are known when the code is written, Micronaut's `MessageSource` beans - `StaticMessageSource`, or `ResourceBundleMessageSource` for existing bundles - keep them behind one interface; bundles in properties files avoid creating classes by name, though each candidate class name is still tried first.
+
+[[problem-class-utils-for-name]]
+=== ClassUtils.forName
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`io.micronaut.core.reflect.ClassUtils`
 |`forName`, `isPresent`
 |`io.micronaut.core.reflect.ClassUtils#forName\|isPresent`
 
 |===
+
+`isPresent` is `forName(name, classLoader).isPresent()`. In Micronaut 5.1, `io.micronaut.core.reflect.ClassUtils` does this:
+
+[source,java]
+----
+if (MISSING_TYPES.contains(name)) {
+    return Optional.empty();
+}
+// ...
+Optional<Class<?>> commonType = Optional.ofNullable(COMMON_CLASS_MAP.get(name));
+if (commonType.isPresent()) {
+    return commonType;
+} else {
+    // ...
+    Class<?> type = Class.forName(name, true, classLoader);
+----
+
+`ClassUtils` does not remember what it loads. `COMMON_CLASS_MAP` is a static map filled once, in the static initializer of `ClassUtils`, with the primitive types, their arrays, their wrappers, `String` and `CharSequence`; `MISSING_TYPES` is a set of names known to be absent, read from `StaticOptimizations`, which a build can generate ahead of time. `forName` only reads them. Every other name goes to `Class.forName` on every call - with `initialize` set to `true`, so the class's static initializer runs the first time - and the result is kept only in the virtual machine's record of the loader, as for `Class.forName` above. A name that is not found is not remembered either: `isPresent` for a missing class asks the loader again, and throws and catches a `ClassNotFoundException`, on every call.
+
+Where a bean depends on a class being present, `@Requires(classes = ...)` puts the class into the compiled annotation metadata and Micronaut checks it before creating the bean. Where the class is known when the code is written, a class literal names it.
 
 == FIELD_UPDATERS
 
@@ -336,6 +1847,9 @@ The atomic field updaters look their field up with `getDeclaredField`, filling t
 ----
 AtomicReferenceFieldUpdater<Node, Node> next = AtomicReferenceFieldUpdater.newUpdater(Node.class, Node.class, "next");
 ----
+
+[[problem-field-updater]]
+=== Atomic field updaters
 
 [cols="3,4,4"]
 |===
@@ -355,6 +1869,40 @@ AtomicReferenceFieldUpdater<Node, Node> next = AtomicReferenceFieldUpdater.newUp
 
 |===
 
+`newUpdater` creates a new updater on every call, taking the calling class with `Reflection.getCallerClass()` for its access check. In JDK 25, the constructor of `AtomicReferenceFieldUpdaterImpl` does this:
+
+[source,java]
+----
+try {
+    field = tclass.getDeclaredField(fieldName);
+    modifiers = field.getModifiers();
+    sun.reflect.misc.ReflectUtil.ensureMemberAccess(
+        caller, tclass, null, modifiers);
+    fieldClass = field.getType();
+} catch (Exception ex) {
+    throw new RuntimeException(ex);
+}
+----
+
+and ends with `this.offset = U.objectFieldOffset(field);`. The integer and long updaters do the same. `getDeclaredField` fills the declared fields of the class:
+
+[source,java]
+----
+private Field[] privateGetDeclaredFields(boolean publicOnly) {
+    Field[] res;
+    ReflectionData<T> rd = reflectionData();
+    res = publicOnly ? rd.declaredPublicFields : rd.declaredFields;
+    if (res != null) return res;
+    // No cached value available; request value from VM
+    res = Reflection.filterFields(this, getDeclaredFields0(publicOnly));
+    // ...
+}
+----
+
+So `ReflectionData.declaredFields` holds a root `Field` for every field of the class, not only the one updated, for as long as the `SoftReference` to the reflection data survives. The updater itself keeps only the offset, and a project usually keeps the updater in a static field. In a native image the field has to be registered for reflection.
+
+A `VarHandle` found once with `MethodHandles.lookup().findVarHandle` does the same work without the reflection data of the class; it is reported as `HANDLES`, which a project that needs atomic fields allows. Where one more object for each instance does not matter, an `AtomicReference`, `AtomicInteger` or `AtomicLong` field needs no lookup at all.
+
 == ENUM_CONSTANTS
 
 `Class.getEnumConstants` invokes the `values()` of an enum reflectively and keeps the constants for the class, and `Enum.valueOf` builds and keeps a map of them by name. `EnumSet` and `EnumMap` take the constants of their type the same way, and the `valueOf(String)` the compiler writes for every enum calls `Enum.valueOf` - so `Colour.valueOf("RED")` is reported, and `Colour.values()` is not.
@@ -365,6 +1913,9 @@ Colour colour = Colour.valueOf("RED");
 EnumSet<Colour> colours = EnumSet.noneOf(Colour.class);
 ----
 
+[[problem-enum-constants]]
+=== Class.getEnumConstants
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -373,27 +1924,184 @@ EnumSet<Colour> colours = EnumSet.noneOf(Colour.class);
 |`getEnumConstants`
 |`java.lang.Class#getEnumConstants`
 
+|===
+
+`getEnumConstants` returns a clone of `getEnumConstantsShared()`. In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+T[] getEnumConstantsShared() {
+    T[] constants = enumConstants;
+    if (constants == null) {
+        if (!isEnum()) return null;
+        try {
+            final Method values = getMethod("values");
+            values.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            T[] temporaryConstants = (T[])values.invoke(null);
+            enumConstants = constants = temporaryConstants;
+        }
+        // ...
+    }
+    return constants;
+}
+private transient volatile T[] enumConstants;
+----
+
+The first call looks `values()` up with `getMethod`, which fills `ReflectionData.declaredPublicMethods` of the enum, and invokes it through `Method.invoke`, which creates a method accessor on the root `Method`. The constants are then kept in `Class.enumConstants` - a plain field of the class, not the soft reflection data, so they live as long as the class. In a native image the `values()` method has to be registered for reflection.
+
+Where the enum is known when the code is written, `Colour.values()` returns the same constants without a lookup. Where it is not, a Micronaut `EnumBeanIntrospection` has the constants that were compiled for an introspected enum, in `getConstants()`.
+
+[[problem-enum-value-of]]
+=== Enum.valueOf
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.Enum`
-|`valueOf`, `describeConstable`
-|`java.lang.Enum#valueOf\|describeConstable`
-
-|`java.lang.Enum.EnumDesc`
-|`of`
-|`java.lang.Enum.EnumDesc#of`
-
-|`java.util.EnumSet`
-|`noneOf`, `allOf`, `of`, `range`, `copyOf`
-|`java.util.EnumSet#noneOf\|allOf\|of\|range\|copyOf`
-
-|`java.util.EnumMap`
-|its constructors
-|`java.util.EnumMap#<init>`
+|`valueOf`
+|`java.lang.Enum#valueOf`
 
 |Every enum
 |The `valueOf(String)` the compiler writes for it
 |None: it is recognised by the compiler's own method
 
 |===
+
+The `valueOf(String)` the compiler writes for an enum calls `Enum.valueOf` with the class of the enum. In JDK 25, `java.lang.Enum` does this:
+
+[source,java]
+----
+T result = enumClass.enumConstantDirectory().get(name);
+if (result != null)
+    return result;
+----
+
+and `java.lang.Class` builds the directory from the shared constants:
+
+[source,java]
+----
+Map<String, T> directory = enumConstantDirectory;
+if (directory == null) {
+    T[] universe = getEnumConstantsShared();
+    // ...
+    directory = HashMap.newHashMap(universe.length);
+    for (T constant : universe) {
+        directory.put(((Enum<?>)constant).name(), constant);
+    }
+    enumConstantDirectory = directory;
+}
+----
+
+So the first call fills `Class.enumConstants`, through the reflective `values()` call above, and `Class.enumConstantDirectory`, a `HashMap` from name to constant; both are fields of the class and live as long as it does.
+
+A `switch` over the name, returning the constants, involves no lookup; so does a static `Map` built once from `values()`.
+
+[[problem-enum-description]]
+=== Enum descriptions
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Enum`
+|`describeConstable`
+|`java.lang.Enum#describeConstable`
+
+|`java.lang.Enum.EnumDesc`
+|`of`
+|`java.lang.Enum.EnumDesc#of`
+
+|===
+
+Describing a constant does not touch the constants yet. In JDK 25, `java.lang.Enum` does this:
+
+[source,java]
+----
+public final Optional<EnumDesc<E>> describeConstable() {
+    return getDeclaringClass()
+            .describeConstable()
+            .map(c -> EnumDesc.of(c, name));
+}
+----
+
+`Class.describeConstable` builds a `ClassDesc` from the descriptor string of the class, and `EnumDesc.of` only calls the constructor, which records the name, the class description and the `ConstantDescs.BSM_ENUM_CONSTANT` bootstrap. Neither fills a cache nor loads a class. They are reported for what an `EnumDesc` is for - being resolved again by name:
+
+[source,java]
+----
+public E resolveConstantDesc(MethodHandles.Lookup lookup)
+        throws ReflectiveOperationException {
+    return Enum.valueOf((Class<E>) constantType().resolveConstantDesc(lookup), constantName());
+}
+----
+
+Resolving it loads the class with `Class.forName` through the lookup and calls `Enum.valueOf`, filling `Class.enumConstants` and `Class.enumConstantDirectory` as above. The `EnumDesc` labels of a pattern `switch` are resolved that way by `SwitchBootstraps`, and the `ConstantBootstraps.enumConstant` bootstrap a description names calls `Enum.valueOf` too.
+
+Where the constant is known when the code is written, use it directly rather than a description of it.
+
+[[problem-enum-set]]
+=== EnumSet
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.util.EnumSet`
+|`noneOf`, `allOf`, `of`, `range`, `copyOf`
+|`java.util.EnumSet#noneOf\|allOf\|of\|range\|copyOf`
+
+|===
+
+Every factory of `EnumSet` goes through `noneOf`, with the class of the enum or of its first element. In JDK 25, `java.util.EnumSet` does this:
+
+[source,java]
+----
+public static <E extends Enum<E>> EnumSet<E> noneOf(Class<E> elementType) {
+    Enum<?>[] universe = getUniverse(elementType);
+    // ...
+}
+----
+
+[source,java]
+----
+private static <E extends Enum<E>> E[] getUniverse(Class<E> elementType) {
+    return SharedSecrets.getJavaLangAccess()
+                                    .getEnumConstantsShared(elementType);
+}
+----
+
+`getEnumConstantsShared` is the method behind `Class.getEnumConstants`, so the first set of an enum invokes its `values()` reflectively and fills `Class.enumConstants`; every set shares that array, uncloned. `copyOf` of another `EnumSet` clones it and takes nothing new.
+
+Once the constants of an enum are taken, further sets of it cost no lookup. A `Set.of` of the constants, or a `boolean[]` indexed by `ordinal()` and sized by `values().length`, needs none at all.
+
+[[problem-enum-map]]
+=== EnumMap
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.util.EnumMap`
+|its constructors
+|`java.util.EnumMap#<init>`
+
+|===
+
+In JDK 25, `java.util.EnumMap` does this:
+
+[source,java]
+----
+public EnumMap(Class<K> keyType) {
+    this.keyType = keyType;
+    keyUniverse = getKeyUniverse(keyType);
+    vals = new Object[keyUniverse.length];
+}
+----
+
+`getKeyUniverse` calls `getEnumConstantsShared` as `EnumSet` does, filling `Class.enumConstants` of the key type on the first map. The constructor taking another `EnumMap` shares its key universe; the one taking any other `Map` takes the class of its first key and fills it the same way.
+
+A `Map.of` of the constants, or an array indexed by `ordinal()` and sized by `values().length`, needs no lookup.
 
 == CLASS_NAMES
 
@@ -404,15 +2112,92 @@ The simple and canonical names of a class are not in its class file as such. The
 String name = type.getSimpleName();
 ----
 
+[[problem-simple-name]]
+=== Class.getSimpleName
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
 
 |`java.lang.Class`
-|`getSimpleName`, `getCanonicalName`
-|`java.lang.Class#getSimpleName\|getCanonicalName`
+|`getSimpleName`
+|`java.lang.Class#getSimpleName`
 
 |===
+
+`getSimpleName()` counts as reflection. In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+public String getSimpleName() {
+    ReflectionData<T> rd = reflectionData();
+    String simpleName = rd.simpleName;
+    if (simpleName == null) {
+        rd.simpleName = simpleName = getSimpleName0();
+    }
+    return simpleName;
+}
+----
+
+The first call creates the reflection data of the class if it has none yet, and keeps the name in it. For a nested class, `getSimpleName0` asks the virtual machine for the simple binary name, which it reads from the `InnerClasses` attribute of the class file:
+
+[source,java]
+----
+private String getSimpleBinaryName() {
+    if (isTopLevelClass())
+        return null;
+    String name = getSimpleBinaryName0();
+    // ...
+}
+----
+
+The name of an array class is built from the simple name of its component type, which fills the reflection data of that class too.
+
+Where the name is known when the code is written, write it as a constant. Where the class is a Micronaut bean or introspected type, its `BeanDefinition` or `BeanIntrospection` has what was compiled: `Class.getName` is not reported, and neither is anything read from Micronaut's metadata.
+
+[[problem-canonical-name]]
+=== Class.getCanonicalName
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getCanonicalName`
+|`java.lang.Class#getCanonicalName`
+
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+public String getCanonicalName() {
+    ReflectionData<T> rd = reflectionData();
+    String canonicalName = rd.canonicalName;
+    if (canonicalName == null) {
+        rd.canonicalName = canonicalName = getCanonicalName0();
+    }
+    return canonicalName == ReflectionData.NULL_SENTINEL? null : canonicalName;
+}
+----
+
+Working the name out walks outwards through the enclosing classes, asking each for its canonical name and the class itself for its simple name - so one call fills the reflection data of every class around it:
+
+[source,java]
+----
+Class<?> enclosingClass = getEnclosingClass();
+if (enclosingClass == null) { // top level class
+    return getName();
+} else {
+    String enclosingName = enclosingClass.getCanonicalName();
+    // ...
+    String simpleName = getSimpleName();
+----
+
+A class that has no canonical name - a local, anonymous or hidden class - is remembered as having none, with `NULL_SENTINEL`, so it too fills the reflection data.
+
+`Class.getName`, which the class file holds, names a nested class with a `$` rather than a `.`; where the canonical form is needed for a class known when the code is written, write it as a constant.
 
 == INTERFACES
 
@@ -423,6 +2208,9 @@ String name = type.getSimpleName();
 Class<?>[] interfaces = type.getInterfaces();
 ----
 
+[[problem-class-interfaces]]
+=== Class.getInterfaces
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -431,11 +2219,65 @@ Class<?>[] interfaces = type.getInterfaces();
 |`getInterfaces`
 |`java.lang.Class#getInterfaces`
 
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+private Class<?>[] getInterfaces(boolean cloneArray) {
+    ReflectionData<T> rd = reflectionData();
+    Class<?>[] interfaces = rd.interfaces;
+    if (interfaces == null) {
+        interfaces = getInterfaces0();
+        rd.interfaces = interfaces;
+    }
+    // defensively copy if requested
+    return cloneArray ? interfaces.clone() : interfaces;
+}
+----
+
+The first call creates the reflection data of the class if it has none yet, asks the virtual machine for the direct interfaces with the native `getInterfaces0`, and keeps the array in `ReflectionData.interfaces`. The reflection data is held by the class through a `SoftReference`, so the array lives until the garbage collector clears it under memory pressure or the class is redefined; every call hands out a fresh copy of it:
+
+[source,java]
+----
+private transient volatile SoftReference<ReflectionData<T>> reflectionData;
+----
+
+The interfaces are those the class file names, which the virtual machine loaded when it loaded the class, so the call loads nothing new. `Class.getGenericInterfaces` of a class that has no generic signature falls back to this method and fills the same entry.
+
+Where the question is whether a class implements a known interface, `instanceof` or `Class.isAssignableFrom` answers it without the reflection data. For a Micronaut bean, the `BeanDefinition` has the type arguments of its interfaces as compiled, through `getTypeArguments(Class)`.
+
+[[problem-class-hierarchy]]
+=== ClassUtils.resolveHierarchy
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`io.micronaut.core.reflect.ClassUtils`
 |`resolveHierarchy`
 |`io.micronaut.core.reflect.ClassUtils#resolveHierarchy`
 
 |===
+
+In Micronaut 5.1, `io.micronaut.core.reflect.ClassUtils` walks the superclasses of the type and, for each of them, every interface it implements, recursively:
+
+[source,java]
+----
+private static void populateHierarchyInterfaces(Class<?> superclass, List<Class<?>> hierarchy) {
+    for (Class<?> aClass : superclass.getInterfaces()) {
+        if (!hierarchy.contains(aClass)) {
+            hierarchy.add(aClass);
+        }
+        populateHierarchyInterfaces(aClass, hierarchy);
+    }
+}
+----
+
+The method keeps nothing itself - every call builds a new list. What it fills is the platform's cache: one call runs `Class.getInterfaces` on the type, on each of its superclasses and on every interface reached from them, so it creates the reflection data of every class and interface in the hierarchy and fills `ReflectionData.interfaces` in each.
+
+Where the question is whether a type is a subtype of a known one, `Class.isAssignableFrom` answers it without walking the hierarchy. For a Micronaut bean, its `BeanDefinition` has the type arguments of a supertype or interface as compiled, through `getTypeArguments(Class)`.
 
 == GENERIC_SIGNATURES
 
@@ -446,6 +2288,9 @@ A generic signature is parsed from the class file on first use and kept for the 
 Type superclass = type.getGenericSuperclass();
 ----
 
+[[problem-class-generic-signature]]
+=== Generic signature of a class
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -453,6 +2298,63 @@ Type superclass = type.getGenericSuperclass();
 |`java.lang.Class`
 |`getGenericSuperclass`, `getGenericInterfaces`, `getTypeParameters`, `toGenericString`
 |`java.lang.Class#getGenericSuperclass\|getGenericInterfaces\|getTypeParameters\|toGenericString`
+
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+private ClassRepository getGenericInfo() {
+    ClassRepository genericInfo = this.genericInfo;
+    if (genericInfo == null) {
+        String signature = getGenericSignature0();
+        if (signature == null) {
+            genericInfo = ClassRepository.NONE;
+        } else {
+            genericInfo = ClassRepository.make(signature, getFactory());
+        }
+        this.genericInfo = genericInfo;
+    }
+    return (genericInfo != ClassRepository.NONE) ? genericInfo : null;
+}
+----
+
+The first call asks the virtual machine for the `Signature` attribute of the class, parses it into a syntax tree and keeps it, as a `ClassRepository`, in `Class.genericInfo`. The field is a plain `transient volatile` field of the class, not part of its soft reflection data, so the repository lives as long as the class. A class with no signature is remembered with `ClassRepository.NONE`.
+
+The repository turns each part of the tree into `java.lang.reflect.Type` objects only when it is asked for, and keeps the result too - the superclass, the superinterfaces and the type parameters each in a field of their own:
+
+[source,java]
+----
+public Type[] getSuperInterfaces() {
+    Type[] value = superInterfaces;
+    if (value == null) {
+        value = computeSuperInterfaces();
+        superInterfaces = value;
+    }
+    return value.clone();
+}
+----
+
+Building a type loads every class the signature names, without initialising it, through the defining loader of the class:
+
+[source,java]
+----
+public Type makeNamedType(String name){
+    try {return Class.forName(name, false, // don't initialize
+                              getDeclsLoader());}
+----
+
+A parameterized type checks its arguments against the type parameters of its raw type, which fills the `genericInfo` of that class as well. `toGenericString` reads the type parameters and their bounds, and `getGenericInterfaces` of a class with no signature falls back to `Class.getInterfaces`, which fills `ReflectionData.interfaces` instead.
+
+For a Micronaut bean, its `BeanDefinition` has the type arguments of the bean type and of its supertypes as compiled, through `getTypeArguments()` and `getTypeArguments(Class)`; an introspected type's `BeanIntrospection` has them for each property as `Argument` type parameters.
+
+[[problem-member-generic-signature]]
+=== Generic signature of a member
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.lang.reflect.Executable` and every subtype of it
 |`getGenericParameterTypes`, `getGenericExceptionTypes`, `getGenericReturnType`, `getTypeParameters`, `toGenericString`
@@ -466,9 +2368,81 @@ Type superclass = type.getGenericSuperclass();
 |`getGenericType`, `getGenericSignature`
 |`java.lang.reflect.RecordComponent#getGenericType\|getGenericSignature`
 
+|===
+
+A method, constructor or field is handed out as a copy of a root object, and the parsed signature is kept on both. In JDK 25, `java.lang.reflect.Method` does this:
+
+[source,java]
+----
+MethodRepository getGenericInfo() {
+    var genericInfo = this.genericInfo;
+    if (genericInfo == null) {
+        var root = this.root;
+        if (root != null) {
+            genericInfo = root.getGenericInfo();
+        } else {
+            genericInfo = MethodRepository.make(getGenericSignature(), getFactory());
+        }
+        this.genericInfo = genericInfo;
+    }
+    return genericInfo;
+}
+----
+
+The first call on any copy parses the signature once into a `MethodRepository` (a `ConstructorRepository` or `FieldRepository` for the others) and keeps it in the `genericInfo` field of the root, which the reflection data of the declaring class holds, and of the copy. Copies made later are given it straight away:
+
+[source,java]
+----
+res.root = this;
+// Propagate shared states
+res.methodAccessor = methodAccessor;
+res.genericInfo = genericInfo;
+----
+
+So the parsed signature lives as long as the root does - until the soft reflection data of the declaring class is cleared - and in any copy the program still holds. As for a class, the repository keeps the parameter types, exception types, return type and type parameters it builds, and building them loads the classes they name.
+
+A member with no generic signature does not parse anything: `getGenericParameterTypes` and `getGenericType` return the erased types the member already has. A `RecordComponent` is created anew by every `Class.getRecordComponents` call and has no root, so its `genericInfo` lives only as long as that object. `RecordComponent.getGenericSignature` parses nothing and caches nothing - it returns the signature string the virtual machine gave the component - and is reported because it hands out the raw generic signature of a reflected member.
+
+For a Micronaut bean, the `ExecutableMethod` of a method has its return type and arguments, with their type parameters, as compiled, and an introspected type's `BeanProperty` has the generic type of each property through `asArgument()`.
+
+[[problem-parameterized-type]]
+=== Parameter.getParameterizedType
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.reflect.Parameter`
 |`getParameterizedType`
 |`java.lang.reflect.Parameter#getParameterizedType`
+
+|===
+
+In JDK 25, `java.lang.reflect.Parameter` does this:
+
+[source,java]
+----
+public Type getParameterizedType() {
+    Type tmp = parameterTypeCache;
+    if (null == tmp) {
+        tmp = executable.getAllGenericParameterTypes()[index];
+        parameterTypeCache = tmp;
+    }
+
+    return tmp;
+}
+----
+
+The type is kept in `Parameter.parameterTypeCache`, and the `Parameter` itself in the `parameterData` of the method or constructor it came from - of that copy, not of the root. Working it out reads the generic parameter types of the executable, which parses its signature into `genericInfo` as described above and loads the classes it names, and, for a member that has a generic signature, asks the virtual machine for the parameters of the executable, kept in its `parameterData`, to leave synthetic and implicit ones out.
+
+For a Micronaut bean, the `ExecutableMethod` of a method has each argument, with its type parameters, as an `Argument` from what was compiled.
+
+[[problem-generic-types]]
+=== Generic types
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.lang.reflect.ParameterizedType` and every subtype of it
 |Every method and constructor
@@ -486,20 +2460,72 @@ Type superclass = type.getGenericSuperclass();
 |Every method and constructor
 |`java.lang.reflect.GenericArrayType+#*`
 
+|===
+
+These are the objects a generic signature produces, and some of them finish their work only when asked. In JDK 25, `sun.reflect.generics.reflectiveObjects.TypeVariableImpl` keeps the bounds as a piece of the parsed signature until the first call, then replaces them with the types it builds:
+
+[source,java]
+----
+public Type[] getBounds() {
+    Object[] value = bounds;
+    if (value instanceof FieldTypeSignature[] sigs) {
+        value = reifyBounds(sigs);
+        bounds = value;
+    }
+    return (Type[])value.clone();
+}
+----
+
+`WildcardTypeImpl` does the same with its upper and lower bounds. Building a bound loads the classes it names, as described above, and the result is kept in the type variable or wildcard - which is itself kept by the `genericInfo` of the class or member it came from. The annotation methods of a `TypeVariable` parse the type annotations of the declaring class or member on every call, and keep nothing.
+
+A `ParameterizedTypeImpl` or `GenericArrayTypeImpl` is complete when it is made, so its getters read final fields and fill no cache. They are reported because such a type exists only where a generic signature was read, and because the classes it hands out are then used reflectively.
+
+Where the type arguments are needed at run time, Micronaut's `Argument` carries them as compiled - `getTypeParameters()` on the `Argument` of a bean property or a method argument answers what `ParameterizedType.getActualTypeArguments` would.
+
+[[problem-generic-type-utils]]
+=== GenericTypeUtils
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`io.micronaut.core.reflect.GenericTypeUtils`
 |Every method and constructor
 |`io.micronaut.core.reflect.GenericTypeUtils#*`
 
 |===
 
+In Micronaut 5.1, `io.micronaut.core.reflect.GenericTypeUtils` resolves type arguments from the generic signatures of the classes it is given. To find the arguments of an interface, it collects the generic interfaces of the class, of every interface it reaches and of every superclass:
+
+[source,java]
+----
+private static Set<Type> populateInterfaces(Class<?> aClass, Set<Type> interfaces) {
+    Type[] theInterfaces = aClass.getGenericInterfaces();
+    interfaces.addAll(Arrays.asList(theInterfaces));
+    for (Type theInterface : theInterfaces) {
+        if (theInterface instanceof Class i) {
+            if (ArrayUtils.isNotEmpty(i.getGenericInterfaces())) {
+                populateInterfaces(i, interfaces);
+            }
+        }
+    }
+----
+
+The class keeps nothing itself. What it fills is the platform's cache: each call parses the signature of every class it walks into that class's `genericInfo`, loads the classes the signatures name, and, for a class without a signature, fills `ReflectionData.interfaces` through `Class.getInterfaces`. `resolveGenericTypeArgument(Field)` reads `Field.getGenericType`, which fills the `genericInfo` of the field and its root.
+
+For a Micronaut bean, `BeanDefinition.getTypeArguments(Class)` and `getTypeParameters(Class)` answer the same questions from what was compiled.
+
 == ANNOTATIONS
 
-Annotations read from a class, a member, a parameter or a type use are parsed from the class file into proxy instances and kept for it. Micronaut's annotation metadata answers the same questions from what was compiled, and is not reported.
+Annotations read from a class, a member, a parameter or a type use are parsed from the class file into proxy instances. Those of a class or a member are kept for it; parameter annotations, annotation defaults and type-use annotations are parsed again on every call. Micronaut's annotation metadata answers the same questions from what was compiled, and is not reported.
 
 [source,java]
 ----
 Deprecated deprecated = type.getAnnotation(Deprecated.class);
 ----
+
+[[problem-declared-annotations]]
+=== Declared annotations
 
 [cols="3,4,4"]
 |===
@@ -509,17 +2535,145 @@ Deprecated deprecated = type.getAnnotation(Deprecated.class);
 |`getAnnotation`, `getAnnotations`, `getDeclaredAnnotation`, `getDeclaredAnnotations`, `getAnnotationsByType`, `getDeclaredAnnotationsByType`, `isAnnotationPresent`
 |`java.lang.reflect.AnnotatedElement+#getAnnotation\|getAnnotations\|getDeclaredAnnotation\|getDeclaredAnnotations\|getAnnotationsByType\|getDeclaredAnnotationsByType\|isAnnotationPresent`
 
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+private AnnotationData createAnnotationData(int classRedefinedCount) {
+    Map<Class<? extends Annotation>, Annotation> declaredAnnotations =
+        AnnotationParser.parseAnnotations(getRawAnnotations(), getConstantPool(), this);
+    Class<?> superClass = getSuperclass();
+    Map<Class<? extends Annotation>, Annotation> annotations = null;
+    if (superClass != null) {
+        Map<Class<? extends Annotation>, Annotation> superAnnotations =
+            superClass.annotationData().annotations;
+    // ...
+----
+
+The first call asks the virtual machine for the raw `RuntimeVisibleAnnotations` bytes of the class, parses them, and keeps the declared and the inherited annotations as an `AnnotationData` in `Class.annotationData` - a plain `transient volatile` field, not the soft reflection data, so it lives as long as the class and is only replaced when the class is redefined. Finding the `@Inherited` annotations fills the `annotationData` of every superclass in turn.
+
+A method, constructor or field keeps its annotations in a `declaredAnnotations` map, parsed once on the root and shared by its copies. In JDK 25, `java.lang.reflect.Executable` does this:
+
+[source,java]
+----
+Executable root = (Executable)getRoot();
+if (root != null) {
+    declAnnos = root.declaredAnnotations();
+} else {
+    declAnnos = AnnotationParser.parseAnnotations(
+            getAnnotationBytes(),
+            SharedSecrets.getJavaLangAccess().
+                    getConstantPool(getDeclaringClass()),
+            getDeclaringClass()
+    );
+}
+declaredAnnotations = declAnnos;
+----
+
+The root lives in the soft reflection data of the declaring class, so the map is parsed again once that is cleared. A `Parameter` keeps a map of its own, built from `Executable.getParameterAnnotations`, and a `RecordComponent` one that lives only as long as the component object.
+
+Parsing an annotation loads its class, and describes the annotation interface once as an `AnnotationType`, which it keeps in the `Class.annotationType` field of that interface. Building it reads the declared methods of the interface - filling its `ReflectionData.declaredMethods` - and the default value of each member:
+
+[source,java]
+----
+// Initialize memberTypes and defaultValues
+Method[] methods = annotationClass.getDeclaredMethods();
+----
+
+Each annotation is then a `java.lang.reflect.Proxy` instance:
+
+[source,java]
+----
+return (Annotation) Proxy.newProxyInstance(
+        type.getClassLoader(), new Class<?>[] { type },
+        new AnnotationInvocationHandler(type, memberValues));
+----
+
+The first annotation of each type spins a proxy class at run time and keeps its constructor in the `proxyCache` of `Proxy`, a `ClassLoaderValue` held by the class loader of the annotation interface. Member values of type `Class` load the classes they name, and enum values go through `Enum.valueOf`, which fills `Class.enumConstantDirectory` of the enum.
+
+A Micronaut bean, introspected type, executable method or argument has its annotations as compiled `AnnotationMetadata`, from `getAnnotationMetadata()`: `hasAnnotation`, `findAnnotation`, `stringValue` and the like read it without the platform.
+
+[[problem-parameter-annotations]]
+=== Parameter annotations
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.reflect.Executable` and every subtype of it
+|`getParameterAnnotations`
+|`java.lang.reflect.Executable+#getParameterAnnotations`
+
+|===
+
+In JDK 25, `java.lang.reflect.Executable` does this:
+
+[source,java]
+----
+Annotation[][] sharedGetParameterAnnotations(Class<?>[] parameterTypes,
+                                             byte[] parameterAnnotations) {
+    int numParameters = parameterTypes.length;
+    if (parameterAnnotations == null)
+        return new Annotation[numParameters][0];
+
+    Annotation[][] result = parseParameterAnnotations(parameterAnnotations);
+    // ...
+----
+
+Nothing is cached: every call parses the `RuntimeVisibleParameterAnnotations` bytes the method or constructor was created with, and builds new proxy instances for every annotation. The parsing still has the lasting effects described under declared annotations - it loads the annotation classes, fills their `Class.annotationType`, and spins and caches a proxy class for each annotation type.
+
+For a Micronaut bean, each `Argument` of an `ExecutableMethod` has the annotations of that parameter as compiled `AnnotationMetadata`.
+
+[[problem-annotation-default]]
+=== Method.getDefaultValue
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.reflect.Method`
+|`getDefaultValue`
+|`java.lang.reflect.Method#getDefaultValue`
+
+|===
+
+In JDK 25, `java.lang.reflect.Method` does this:
+
+[source,java]
+----
+public Object getDefaultValue() {
+    if  (annotationDefault == null)
+        return null;
+    Class<?> memberType = AnnotationType.invocationHandlerReturnType(
+        getReturnType());
+    Object result = AnnotationParser.parseMemberValue(
+        memberType, ByteBuffer.wrap(annotationDefault),
+        SharedSecrets.getJavaLangAccess().
+            getConstantPool(getDeclaringClass()),
+        getDeclaringClass());
+    // ...
+----
+
+The method caches nothing: every call parses the `AnnotationDefault` bytes the method was created with. A default of type `Class` loads the class it names, an enum default fills `Class.enumConstantDirectory` of the enum, and a nested annotation default is parsed into a new proxy instance as described above. The defaults the platform does keep are those in the `AnnotationType` of the annotation interface, which reads them through this same method.
+
+Micronaut keeps the defaults of an annotation in its compiled metadata: `AnnotationMetadata.getDefaultValue` and `getDefaultValues` return them without the platform.
+
+[[problem-annotated-types]]
+=== Annotated types
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.Class`
 |`getAnnotatedSuperclass`, `getAnnotatedInterfaces`
 |`java.lang.Class#getAnnotatedSuperclass\|getAnnotatedInterfaces`
 
 |`java.lang.reflect.Executable` and every subtype of it
-|`getParameterAnnotations`, `getAnnotatedReturnType`, `getAnnotatedReceiverType`, `getAnnotatedParameterTypes`, `getAnnotatedExceptionTypes`
-|`java.lang.reflect.Executable+#getParameterAnnotations\|getAnnotatedReturnType\|getAnnotatedReceiverType\|getAnnotatedParameterTypes\|getAnnotatedExceptionTypes`
-
-|`java.lang.reflect.Method`
-|`getDefaultValue`
-|`java.lang.reflect.Method#getDefaultValue`
+|`getAnnotatedReturnType`, `getAnnotatedReceiverType`, `getAnnotatedParameterTypes`, `getAnnotatedExceptionTypes`
+|`java.lang.reflect.Executable+#getAnnotatedReturnType\|getAnnotatedReceiverType\|getAnnotatedParameterTypes\|getAnnotatedExceptionTypes`
 
 |`java.lang.reflect.Field`
 |`getAnnotatedType`
@@ -539,32 +2693,569 @@ Deprecated deprecated = type.getAnnotation(Deprecated.class);
 
 |===
 
+In JDK 25, `java.lang.reflect.Field` does this:
+
+[source,java]
+----
+public AnnotatedType getAnnotatedType() {
+    return TypeAnnotationParser.buildAnnotatedType(getTypeAnnotationBytes0(),
+                                                   SharedSecrets.getJavaLangAccess().
+                                                       getConstantPool(getDeclaringClass()),
+                                                   this,
+                                                   getDeclaringClass(),
+                                                   getGenericType(),
+                                                   TypeAnnotation.TypeAnnotationTarget.FIELD);
+}
+----
+
+None of these methods caches the annotated type. Each call asks the virtual machine for the `RuntimeVisibleTypeAnnotations` bytes, parses all of them into proxy instances, keeps those for the requested target and wraps them around the generic type. `Parameter` says so outright:
+
+[source,java]
+----
+public AnnotatedType getAnnotatedType() {
+    // no caching for now
+    return executable.getAnnotatedParameterTypes()[index];
+}
+----
+
+What does last is what they reach for on the way: the generic type comes from `getGenericType`, `getGenericReturnType`, `getGenericSuperclass` and the like, which fill the `genericInfo` of the class or member and load the classes it names, and the annotations have the lasting effects described under declared annotations. The `AnnotatedType` objects themselves keep their annotations in a map, but work out the annotated type arguments, bounds, component and owner types anew on every call, from the same generic types.
+
+Micronaut's `Argument` - of a method argument, a return type or a bean property - and each of its type parameters carry their annotations as compiled `AnnotationMetadata`, which covers what a project usually reads type-use annotations for.
+
 == CLASS_MEMBERS
 
-Looking a member up fills the reflection data of its class with every member of that kind, declared or public, each a `java.lang.reflect` object.
+Looking a method, constructor or field up fills the reflection data of its class with every member of that kind, declared or public, each a `java.lang.reflect` object. The other calls here - record components, permitted subclasses, nest members, member classes - cache nothing and load classes on every call.
 
 [source,java]
 ----
 Method[] methods = type.getDeclaredMethods();
 ----
 
+[[problem-public-methods]]
+=== Public methods
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
 
 |`java.lang.Class`
-|`getMethod`, `getMethods`, `getDeclaredMethod`, `getDeclaredMethods`, `getConstructor`, `getConstructors`, `getDeclaredConstructor`, `getDeclaredConstructors`, `getField`, `getFields`, `getDeclaredField`, `getDeclaredFields`, `getRecordComponents`, `getPermittedSubclasses`, `getNestMembers`, `getClasses`, `getDeclaredClasses`, `getEnclosingMethod`, `getEnclosingConstructor`
-|`java.lang.Class#getMethod\|getMethods\|getDeclaredMethod\|getDeclaredMethods\|getConstructor\|getConstructors\|getDeclaredConstructor\|getDeclaredConstructors\|getField\|getFields\|getDeclaredField\|getDeclaredFields\|getRecordComponents\|getPermittedSubclasses\|getNestMembers\|getClasses\|getDeclaredClasses\|getEnclosingMethod\|getEnclosingConstructor`
+|`getMethod`, `getMethods`
+|`java.lang.Class#getMethod\|getMethods`
+
+|===
+
+The public methods of a class include the ones it inherits, so they are collected from the whole hierarchy. In JDK 25, `java.lang.Class` does this for `getMethods()`:
+
+[source,java]
+----
+private Method[] privateGetPublicMethods() {
+    Method[] res;
+    ReflectionData<T> rd = reflectionData();
+    res = rd.publicMethods;
+    if (res != null) return res;
+
+    // No cached value available; compute value recursively.
+    // Start by fetching public declared methods...
+    PublicMethods pms = new PublicMethods();
+    for (Method m : privateGetDeclaredMethods(/* publicOnly */ true)) {
+        pms.merge(m);
+    }
+    // ...then recur over superclass methods...
+    Class<?> sc = getSuperclass();
+    // ...
+----
+
+It goes on to the direct superinterfaces the same way. The first call fills `ReflectionData.declaredPublicMethods` and `ReflectionData.publicMethods` of the class, of every superclass and of every superinterface, and `ReflectionData.interfaces` of each of them on the way. `getMethod(name, types)` does not build the merged array, but it walks the same hierarchy until it finds a match:
+
+[source,java]
+----
+// 1st check declared methods
+Method[] methods = privateGetDeclaredMethods(publicOnly);
+PublicMethods.MethodList res = PublicMethods.MethodList
+    .filter(methods, name, parameterTypes, includeStatic);
+// ...
+if (res != null) {
+    return res;
+}
+
+// if there was no match among declared methods,
+// we must consult the superclass (if any) recursively...
+Class<?> sc = getSuperclass();
+if (sc != null) {
+    res = sc.getMethodsRecursive(name, parameterTypes, includeStatic, publicOnly);
+}
+----
+
+So looking up a method a class inherits fills `ReflectionData.declaredPublicMethods` of each superclass up to the one that declares it, and of every superinterface, since the interfaces are searched after the superclass whether or not it matched. Asking for one method creates a `Method` object for every declared public method of every class it looks at.
+
+The reflection data hangs off the class through a `SoftReference` in the `reflectionData` field, so the garbage collector may drop it under memory pressure, and it is thrown away when the class is redefined. The arrays hold "root" objects that are never handed out; each call returns fresh copies:
+
+[source,java]
+----
+Method copy() {
+    if (this.root != null)
+        throw new IllegalArgumentException("Can not copy a non-root Method");
+
+    Method res = new Method(clazz, name, parameterTypes, returnType,
+                            exceptionTypes, modifiers, slot, signature,
+                            annotations, parameterAnnotations, annotationDefault);
+    res.root = this;
+    // Propagate shared states
+    res.methodAccessor = methodAccessor;
+    res.genericInfo = genericInfo;
+    return res;
+}
+----
+
+A copy shares its root's method accessor and parsed generic signature, and a copy that makes either one stores it back on the root, so the root keeps them for as long as the reflection data lives. `getMethods()` copies every public method in the hierarchy on each call.
+
+Where the class is a Micronaut bean, `BeanDefinition.findMethod` and `BeanDefinition.getExecutableMethods` return the `ExecutableMethod` objects compiled for it; for an introspected type, `BeanIntrospection.getBeanMethods` does the same. Where the method is known when the code is written, call it directly or use a method reference.
+
+[[problem-declared-methods]]
+=== Declared methods
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getDeclaredMethod`, `getDeclaredMethods`
+|`java.lang.Class#getDeclaredMethod\|getDeclaredMethods`
+
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+private Method[] privateGetDeclaredMethods(boolean publicOnly) {
+    Method[] res;
+    ReflectionData<T> rd = reflectionData();
+    res = publicOnly ? rd.declaredPublicMethods : rd.declaredMethods;
+    if (res != null) return res;
+    // No cached value available; request value from VM
+    res = Reflection.filterMethods(this, getDeclaredMethods0(publicOnly));
+    if (publicOnly) {
+        rd.declaredPublicMethods = res;
+    } else {
+        rd.declaredMethods = res;
+    }
+    return res;
+}
+----
+
+The first call asks the virtual machine for a `Method` object for every method the class declares - each one carries the `Class` objects of its parameter, return and exception types, so those classes are loaded - and keeps the array in `ReflectionData.declaredMethods`. `Reflection.filterMethods` removes methods registered as hidden from reflection; in JDK 25 its `methodFilterMap` starts out empty, so it removes nothing unless something registers a filter. `getDeclaredMethod(name, types)` searches that same array and returns a copy of the match, so looking one method up still creates objects for all of them. `getDeclaredMethods()` copies every method on each call.
+
+The array lives in the reflection data of the class, behind the same `SoftReference` as the public methods, and each root keeps the accessor and generic signature its copies build, as described under the public methods.
+
+Where the class is a Micronaut bean, `BeanDefinition.findMethod` finds a compiled `ExecutableMethod` by name and argument types; for an introspected type, `BeanIntrospection.getBeanMethods` lists the methods compiled into its introspection. Where the method is known when the code is written, call it directly.
+
+[[problem-public-constructors]]
+=== Public constructors
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getConstructor`, `getConstructors`
+|`java.lang.Class#getConstructor\|getConstructors`
+
+|===
+
+Constructors are not inherited, so the public ones are a subset of the declared ones. In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+private Constructor<T>[] privateGetDeclaredConstructors(boolean publicOnly) {
+    Constructor<T>[] res;
+    ReflectionData<T> rd = reflectionData();
+    res = publicOnly ? rd.publicConstructors : rd.declaredConstructors;
+    if (res != null) return res;
+    // No cached value available; request value from VM
+    if (isInterface()) {
+        @SuppressWarnings("unchecked")
+        Constructor<T>[] temporaryRes = (Constructor<T>[]) new Constructor<?>[0];
+        res = temporaryRes;
+    } else {
+        res = getDeclaredConstructors0(publicOnly);
+    }
+    // ...
+----
+
+The first call keeps a `Constructor` object for every public constructor in `ReflectionData.publicConstructors`; an interface is given an empty array. `getConstructor(types)` searches that array and returns a copy of the match, and `getConstructors()` copies every one on each call. A copy shares its root's constructor accessor and parsed generic signature:
+
+[source,java]
+----
+res.root = this;
+// Might as well eagerly propagate this if already present
+res.constructorAccessor = constructorAccessor;
+res.genericInfo = genericInfo;
+return res;
+----
+
+So the accessor that `Constructor.newInstance` builds stays with the root in the reflection data of the class.
+
+For a Micronaut introspected type, `BeanIntrospection.instantiate` calls the constructor that was compiled for it, and `BeanIntrospection.getConstructor` and `BeanIntrospection.getConstructorArguments` describe it. Where the class is known when the code is written, call its constructor with `new` or pass a constructor reference as a `Supplier`.
+
+[[problem-declared-constructors]]
+=== Declared constructors
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getDeclaredConstructor`, `getDeclaredConstructors`
+|`java.lang.Class#getDeclaredConstructor\|getDeclaredConstructors`
+
+|===
+
+In JDK 25, `java.lang.Class` looks a declared constructor up like this:
+
+[source,java]
+----
+ReflectionFactory fact = getReflectionFactory();
+Constructor<T>[] constructors = privateGetDeclaredConstructors((which == Member.PUBLIC));
+for (Constructor<T> constructor : constructors) {
+    if (arrayContentsEq(parameterTypes,
+                        fact.getExecutableSharedParameterTypes(constructor))) {
+        return constructor;
+    }
+}
+throw new NoSuchMethodException(methodToString("<init>", parameterTypes));
+----
+
+The first call fills `ReflectionData.declaredConstructors` with a `Constructor` object for every constructor of the class, private ones included, loading the classes of their parameter and exception types. The public and declared arrays are separate: a class asked for both holds two sets of root objects. `getDeclaredConstructor` returns a copy of the match, and `getDeclaredConstructors()` copies every constructor on each call. Constructors are not filtered, and the copies share the root's accessor as described under the public constructors.
+
+`getDeclaredConstructor()` followed by `newInstance()` is the usual way to instantiate a class by name. For a Micronaut introspected type, `BeanIntrospection.instantiate` does this with compiled code; for a bean, the `BeanContext` creates it. Where the class is known when the code is written, use `new` or a constructor reference.
+
+[[problem-public-fields]]
+=== Public fields
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getField`, `getFields`
+|`java.lang.Class#getField\|getFields`
+
+|===
+
+The public fields of a class include the ones of its superinterfaces and superclasses. In JDK 25, `java.lang.Class` does this for `getField(name)`:
+
+[source,java]
+----
+Field res;
+// Search declared public fields
+if ((res = searchFields(privateGetDeclaredFields(true), name)) != null) {
+    return res;
+}
+// Direct superinterfaces, recursively
+Class<?>[] interfaces = getInterfaces(/* cloneArray */ false);
+for (Class<?> c : interfaces) {
+    if ((res = c.getField0(name)) != null) {
+        return res;
+    }
+}
+// ...
+----
+
+and then the superclass, the same way. Each class it looks at gets its `ReflectionData.declaredPublicFields` and `ReflectionData.interfaces` filled, up to the one that declares the field. `getFields()` collects them all:
+
+[source,java]
+----
+// Local fields
+addAll(fields, privateGetDeclaredFields(true));
+
+// Direct superinterfaces, recursively
+for (Class<?> si : getInterfaces(/* cloneArray */ false)) {
+    addAll(fields, si.privateGetPublicFields());
+}
+
+// Direct superclass, recursively
+Class<?> sc = getSuperclass();
+if (sc != null) {
+    addAll(fields, sc.privateGetPublicFields());
+}
+----
+
+It keeps the result in `ReflectionData.publicFields`, and fills the same field of every superclass and superinterface on the way. Both calls return copies; a `Field` copy shares its root's field accessors and generic signature, so the accessors that `Field.get` and `Field.set` build stay with the root in the reflection data.
+
+For a Micronaut introspected type, `BeanIntrospection.getProperty` and `BeanIntrospection.getBeanProperties` read and write properties with compiled code. Where the field is known when the code is written, read it directly; where it has to be read or written by name at run time, a `VarHandle` found once and kept in a static final field avoids repeating the lookup.
+
+[[problem-declared-fields]]
+=== Declared fields
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getDeclaredField`, `getDeclaredFields`
+|`java.lang.Class#getDeclaredField\|getDeclaredFields`
+
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+private Field[] privateGetDeclaredFields(boolean publicOnly) {
+    Field[] res;
+    ReflectionData<T> rd = reflectionData();
+    res = publicOnly ? rd.declaredPublicFields : rd.declaredFields;
+    if (res != null) return res;
+    // No cached value available; request value from VM
+    res = Reflection.filterFields(this, getDeclaredFields0(publicOnly));
+    if (publicOnly) {
+        rd.declaredPublicFields = res;
+    } else {
+        rd.declaredFields = res;
+    }
+    return res;
+}
+----
+
+The first call fills `ReflectionData.declaredFields` with a `Field` object for every field of the class, loading the class of each field's type. `getDeclaredField(name)` searches that array and returns a copy of the match; `getDeclaredFields()` copies every field on each call. Unlike methods, fields are filtered from the start - `Reflection.filterFields` hides the fields of a few core classes:
+
+[source,java]
+----
+fieldFilterMap = Map.of(
+    Reflection.class, ALL_MEMBERS,
+    AccessibleObject.class, ALL_MEMBERS,
+    Class.class, Set.of("classLoader", "classData", "modifiers", "protectionDomain", "primitive"),
+    ClassLoader.class, ALL_MEMBERS,
+    Constructor.class, ALL_MEMBERS,
+    Field.class, ALL_MEMBERS,
+    Method.class, ALL_MEMBERS,
+    Module.class, ALL_MEMBERS
+);
+----
+
+The array lives in the reflection data of the class, behind its `SoftReference`, and each root keeps the field accessors its copies build.
+
+For a Micronaut introspected type, `BeanIntrospection.getBeanProperties` lists the properties compiled for it, and `BeanProperty` reads and writes them without reflection. Where the field is known when the code is written, read it directly, or find a `VarHandle` once and keep it in a static final field.
+
+[[problem-record-components]]
+=== Record components
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getRecordComponents`
+|`java.lang.Class#getRecordComponents`
 
 |`java.lang.reflect.RecordComponent`
 |`getAccessor`
 |`java.lang.reflect.RecordComponent#getAccessor`
+
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+public RecordComponent[] getRecordComponents() {
+    if (!isRecord()) {
+        return null;
+    }
+    return getRecordComponents0();
+}
+----
+
+Nothing is cached: `getRecordComponents0` is native, and every call has the virtual machine read the `Record` attribute of the class file again and create new `RecordComponent` objects, each with the `Class` of the component's type and a `Method` for its accessor. `getAccessor()` does no work of its own - it returns the `Method` the virtual machine put in the component's `accessor` field:
+
+[source,java]
+----
+public Method getAccessor() {
+    return accessor;
+}
+----
+
+It is reported because it hands out a `Method` that can then be invoked reflectively, and because it is how code reads a record whose type it does not know. The component and its accessor have to be registered for reflection in a native image.
+
+For a Micronaut introspected record, `BeanIntrospection.getBeanProperties` has a property for each component, compiled to call the accessor directly, and `BeanIntrospection.instantiate` calls the canonical constructor. Where the record is known when the code is written, call its accessors.
+
+[[problem-permitted-subclasses]]
+=== Class.getPermittedSubclasses
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getPermittedSubclasses`
+|`java.lang.Class#getPermittedSubclasses`
+
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+public Class<?>[] getPermittedSubclasses() {
+    Class<?>[] subClasses;
+    if (isArray() || isPrimitive() || (subClasses = getPermittedSubclasses0()) == null) {
+        return null;
+    }
+    if (subClasses.length > 0) {
+        if (Arrays.stream(subClasses).anyMatch(c -> !isDirectSubType(c))) {
+            subClasses = Arrays.stream(subClasses)
+                               .filter(this::isDirectSubType)
+                               .toArray(s -> new Class<?>[s]);
+        }
+    }
+    return subClasses;
+}
+----
+
+Nothing is cached in the class. Every call asks the virtual machine, which loads each class named in the `PermittedSubclasses` attribute with the defining loader of the sealed class and leaves out any it cannot load. Checking that each one is a direct subtype asks it for its superclass, or, for a sealed interface, for its interfaces - which fills `ReflectionData.interfaces` of each permitted subclass. `Class.isSealed` calls this method too.
+
+A `switch` or `instanceof` over the sealed type lets the compiler check the permitted subclasses, with no call at run time. Where a list of them is needed, write it as a constant.
+
+[[problem-nest-members]]
+=== Class.getNestMembers
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getNestMembers`
+|`java.lang.Class#getNestMembers`
+
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+public Class<?>[] getNestMembers() {
+    if (isPrimitive() || isArray()) {
+        return new Class<?>[] { this };
+    }
+    Class<?>[] members = getNestMembers0();
+    // Can't actually enable this due to bootstrapping issues
+    // assert(members.length != 1 || members[0] == this); // expected invariant from VM
+    return members;
+}
+----
+
+Nothing is cached. Every call has the virtual machine find the nest host, load each class its `NestMembers` attribute names with the defining loader of this class, and check that each one names the same host. Hidden classes added to the nest at run time are not in the result.
+
+Code does not need the nest to use it: the members of a nest can reach each other's private members directly in source. Where the member classes are known when the code is written, refer to them with class literals.
+
+[[problem-nested-classes]]
+=== Member classes
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getClasses`, `getDeclaredClasses`
+|`java.lang.Class#getClasses\|getDeclaredClasses`
+
+|===
+
+In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+public Class<?>[] getDeclaredClasses() {
+    return getDeclaredClasses0();
+}
+----
+
+and `getClasses()` repeats it for the class and each of its superclasses, keeping the public ones:
+
+[source,java]
+----
+while (currentClass != null) {
+    for (Class<?> m : currentClass.getDeclaredClasses()) {
+        if (Modifier.isPublic(m.getModifiers())) {
+            list.add(m);
+        }
+    }
+    currentClass = currentClass.getSuperclass();
+}
+----
+
+Nothing is cached - there is no field for member classes in the reflection data. Every call has the virtual machine read the `InnerClasses` attribute of the class file and load each member class it names, so `getClasses()` loads the member classes of the whole superclass chain, private ones included, to find the public ones.
+
+Where the member classes are known when the code is written, refer to them with class literals. Where a set of implementations has to be found at run time, making them Micronaut beans lets the `BeanContext` find them from compiled bean definitions.
+
+[[problem-enclosing-member]]
+=== Enclosing method and constructor
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
+|`java.lang.Class`
+|`getEnclosingMethod`, `getEnclosingConstructor`
+|`java.lang.Class#getEnclosingMethod\|getEnclosingConstructor`
+
+|===
+
+A local or anonymous class records the method or constructor it is declared in as a class, a name and a descriptor in its `EnclosingMethod` attribute. In JDK 25, `java.lang.Class` turns that into a `Method` like this:
+
+[source,java]
+----
+MethodRepository typeInfo = MethodRepository.make(enclosingInfo.getDescriptor(),
+                                                  getFactory());
+Class<?>   returnType       = toClass(typeInfo.getReturnType());
+Type []    parameterTypes   = typeInfo.getParameterTypes();
+// ...
+final Class<?> enclosingCandidate = enclosingInfo.getEnclosingClass();
+Method[] candidates = enclosingCandidate.privateGetDeclaredMethods(false);
+----
+
+Nothing about the lookup itself is cached. Every call asks the virtual machine for the attribute again, parses the descriptor into a new `MethodRepository`, and resolves each class it names with `Class.forName`, without initialising it. It then matches the name, parameter types and return type against the declared methods of the enclosing class - which fills `ReflectionData.declaredMethods` of the enclosing class with every method it declares - and returns a copy of the match. `getEnclosingConstructor()` does the same with a `ConstructorRepository` and fills `ReflectionData.declaredConstructors` of the enclosing class.
+
+Where the enclosing method matters, pass what is needed from it into the local or anonymous class, or make it a named class that is given it.
+
+[[problem-executable-parameters]]
+=== Executable.getParameters
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.lang.reflect.Executable` and every subtype of it
 |`getParameters`
 |`java.lang.reflect.Executable+#getParameters`
 
 |===
+
+In JDK 25, `java.lang.reflect.Executable` does this:
+
+[source,java]
+----
+private ParameterData parameterData() {
+    ParameterData parameterData = this.parameterData;
+    if (parameterData != null) {
+        return parameterData;
+    }
+
+    Parameter[] tmp;
+    // Go to the JVM to get them
+    try {
+        tmp = getParameters0();
+    // ...
+    // If we get back nothing, then synthesize parameters
+    if (tmp == null) {
+        tmp = synthesizeAllParams();
+        parameterData = new ParameterData(tmp, false);
+----
+
+The first call asks the virtual machine for the `MethodParameters` attribute, which `javac` writes only with `-parameters`; without it the names are made up as `arg0`, `arg1` and so on. The `Parameter` objects are kept in the `parameterData` field of that `Method` or `Constructor` object, and each call returns a clone of the array. The field is not one of the states a copy shares with its root, so every `Method` or `Constructor` returned by a `Class` lookup - a fresh copy each time - asks the virtual machine again the first time its parameters are wanted, and the cache lives only as long as that copy.
+
+Micronaut records argument names when it compiles a bean or introspection: `ExecutableMethod.getArguments` and `BeanIntrospection.getConstructorArguments` return `Argument` objects with their names, whatever the `javac` flags were.
 
 == REFLECTIVE_ACCESS
 
@@ -575,6 +3266,9 @@ Reaching a member once it is found - invoking a method, reading or writing the v
 Object value = field.get(target);
 ----
 
+[[problem-accessibility]]
+=== Accessibility
+
 [cols="3,4,4"]
 |===
 |Declared by |Methods |Call pattern
@@ -583,25 +3277,275 @@ Object value = field.get(target);
 |`setAccessible`, `trySetAccessible`, `canAccess`, `isAccessible`
 |`java.lang.reflect.AccessibleObject+#setAccessible\|trySetAccessible\|canAccess\|isAccessible`
 
+|===
+
+`setAccessible(true)` turns off the language's access checks for one `Method`, `Field` or `Constructor` object. In JDK 25, `java.lang.reflect.Method` does this:
+
+[source,java]
+----
+public void setAccessible(boolean flag) {
+    if (flag) checkCanSetAccessible(Reflection.getCallerClass());
+    setAccessible0(flag);
+}
+----
+
+The check asks whether the package of the declaring class is open to the module of the caller, and `setAccessible0` does no more than set the `override` field of the object at hand - not of the root member the class keeps, so the next `getDeclaredMethod` hands out an object with the checks on again. `trySetAccessible` does the same without throwing, and `isAccessible` only reads `override`. None of them fills a cache; they are reported because they are how code reaches members it could not otherwise call, which fails with `InaccessibleObjectException` where the package is not open, and which is what the accessors below are then made for.
+
+`canAccess` does fill one. It runs the same check a call through the member would, and remembers the caller that passed it in the object itself:
+
+[source,java]
+----
+// Success: Update the cache.
+Object cache = (targetClass != null
+                && Modifier.isProtected(modifiers)
+                && targetClass != memberClass)
+                ? Cache.protectedMemberCallerCache(caller, targetClass)
+                : new WeakReference<>(caller);
+accessCheckCache = cache;         // write volatile
+return true;
+----
+
+The `accessCheckCache` field holds the last caller, and for a protected member the class of the target too, through weak references, and lives as long as the `Method`, `Field` or `Constructor` object does. `Method.invoke`, `Field.get` and `Constructor.newInstance` go through the same check and fill the same field when the accessible flag is not set.
+
+Code that is compiled with the class it calls needs neither: a Micronaut bean or an introspected type reaches its members through the code Micronaut generated, which is compiled with the same access as the class itself.
+
+[[problem-constructor-accessor]]
+=== Constructor.newInstance
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.reflect.Constructor`
 |`newInstance`
 |`java.lang.reflect.Constructor#newInstance`
+
+|===
+
+In JDK 25, `java.lang.reflect.Constructor` does this:
+
+[source,java]
+----
+if (checkAccess)
+    checkAccess(caller, clazz, clazz, modifiers);
+
+ConstructorAccessor ca = constructorAccessor;   // read @Stable
+if (ca == null) {
+    ca = acquireConstructorAccessor();
+}
+----
+
+The first call takes the accessor from the root constructor if it has one, and otherwise makes one and keeps it in the `constructorAccessor` field of this object and of its root:
+
+[source,java]
+----
+Constructor<?> root = this.root;
+ConstructorAccessor tmp = root == null ? null : root.getConstructorAccessor();
+if (tmp != null) {
+    constructorAccessor = tmp;
+} else {
+    // ...
+    tmp = reflectionFactory.newConstructorAccessor(this);
+    // set the constructor accessor only if it's not using native implementation
+    if (VM.isJavaLangInvokeInited())
+        setConstructorAccessor(tmp);
+}
+----
+
+The root is the `Constructor` the reflection data of the class holds in `ReflectionData.declaredConstructors` or `publicConstructors`, so the accessor lives as long as that soft reference does, and every copy handed out later starts with it. Making it initialises the class and builds a method handle for the constructor, in `jdk.internal.reflect.MethodHandleAccessorFactory`:
+
+[source,java]
+----
+ensureClassInitialized(ctor.getDeclaringClass());
+try {
+    MethodHandle target = makeConstructorHandle(JLIA.unreflectConstructor(ctor));
+    return DirectConstructorHandleAccessor.constructorAccessor(ctor, target);
+----
+
+For a Micronaut bean or introspected type, `BeanIntrospection.instantiate` calls the constructor from compiled code. Otherwise, call the constructor, or take a `Supplier` or a constructor reference where the type varies.
+
+[[problem-method-accessor]]
+=== Method.invoke
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.lang.reflect.Method`
 |`invoke`
 |`java.lang.reflect.Method#invoke`
 
+|===
+
+In JDK 25, `java.lang.reflect.Method` does this:
+
+[source,java]
+----
+if (!override) {
+    checkAccess(caller, clazz,
+            Modifier.isStatic(modifiers) ? null : obj.getClass(),
+            modifiers);
+}
+MethodAccessor ma = methodAccessor;             // read @Stable
+if (ma == null) {
+    ma = acquireMethodAccessor();
+}
+----
+
+As with a constructor, the first call takes the accessor from the root method or makes one, and keeps it on this object and on the root:
+
+[source,java]
+----
+Method root = this.root;
+MethodAccessor tmp = root == null ? null : root.getMethodAccessor();
+if (tmp != null) {
+    methodAccessor = tmp;
+} else {
+    // Otherwise fabricate one and propagate it up to the root
+    tmp = reflectionFactory.newMethodAccessor(this, isCallerSensitive());
+----
+
+The root is the `Method` in `ReflectionData.declaredMethods` or another of the method arrays of the class, behind its soft reference, and the accessor lives with it. `MethodHandleAccessorFactory` makes the accessor by initialising the declaring class and looking the method up again as a direct method handle:
+
+[source,java]
+----
+var mtype = methodType(method.getReturnType(), reflectionFactory.getExecutableSharedParameterTypes(method));
+var isStatic = Modifier.isStatic(method.getModifiers());
+var dmh = isStatic ? JLIA.findStatic(method.getDeclaringClass(), method.getName(), mtype)
+                                : JLIA.findVirtual(method.getDeclaringClass(), method.getName(), mtype);
+----
+
+The handle is then adapted to the shape `invoke` takes; a caller-sensitive method gets an adapter that is handed the caller.
+
+For a Micronaut bean, an `ExecutableMethod` of its `BeanDefinition` invokes the method from compiled code, and so does a `BeanMethod` of a `BeanIntrospection`. Otherwise, call the method, or take a functional interface or a method reference.
+
+[[problem-field-accessor]]
+=== Field values
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.reflect.Field`
 |`get`, `getBoolean`, `getByte`, `getChar`, `getShort`, `getInt`, `getLong`, `getFloat`, `getDouble`, `set`, `setBoolean`, `setByte`, `setChar`, `setShort`, `setInt`, `setLong`, `setFloat`, `setDouble`
 |`java.lang.reflect.Field#get\|getBoolean\|getByte\|getChar\|getShort\|getInt\|getLong\|getFloat\|getDouble\|set\|setBoolean\|setByte\|setChar\|setShort\|setInt\|setLong\|setFloat\|setDouble`
+
+|===
+
+Every one of these reads or writes the value through an accessor. In JDK 25, `java.lang.reflect.Field` does this:
+
+[source,java]
+----
+if (!override) {
+    Class<?> caller = Reflection.getCallerClass();
+    checkAccess(caller, obj);
+    return getFieldAccessor().get(obj);
+} else {
+    return getOverrideFieldAccessor().get(obj);
+}
+----
+
+A field keeps two accessors, `fieldAccessor` for when the access checks are on and `overrideFieldAccessor` for after `setAccessible(true)`, and the first call of each kind makes it and keeps it on this object and on the root:
+
+[source,java]
+----
+Field root = this.root;
+FieldAccessor tmp = root == null ? null : root.fieldAccessor;
+if (tmp != null) {
+    fieldAccessor = tmp;
+} else {
+    // Otherwise fabricate one and propagate it up to the root
+    tmp = reflectionFactory.newFieldAccessor(this, false);
+    setFieldAccessor(tmp);
+}
+----
+
+The root is the `Field` in `ReflectionData.declaredFields` or `publicFields`, behind the soft reference of the class. `MethodHandleAccessorFactory.newFieldAccessor` initialises the declaring class and makes a getter handle, and a setter handle unless the field is read-only, wrapped in an accessor class for the type of the field:
+
+[source,java]
+----
+var getter = JLIA.unreflectField(field, false);
+var setter = isReadOnly ? null : JLIA.unreflectField(field, true);
+----
+
+Reading the name, type or modifiers of a field makes no accessor and is not reported.
+
+Read or write the field in code where it is visible. For a Micronaut introspected type, a `BeanProperty` of its `BeanIntrospection` gets and sets the property from compiled code.
+
+[[problem-arrays]]
+=== Array
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.lang.reflect.Array`
 |Every method and constructor
 |`java.lang.reflect.Array#*`
 
+|===
+
+`java.lang.reflect.Array` fills no cache: its methods are native calls into the virtual machine. In JDK 25 it does this:
+
+[source,java]
+----
+public static Object newInstance(Class<?> componentType, int length)
+    throws NegativeArraySizeException {
+    return newArray(componentType, length);
+}
+----
+
+[source,java]
+----
+@IntrinsicCandidate
+private static native Object newArray(Class<?> componentType, int length)
+    throws NegativeArraySizeException;
+----
+
+`get`, `set`, `getLength` and the typed variants are `native` too, and do their work afresh on every call. It is still reported: `newInstance` creates an array of a class only known at run time, so the virtual machine has to make that array class if nothing has made it yet, and in a native image the array class has to be registered for reflection. The other methods reach into an array without knowing its type, which is what code working over reflected members does.
+
+Where the element type is known when the code is written, create the array with `new`, or take a generator such as `String[]::new`, as `Collection.toArray` does, and read `length` directly.
+
+[[problem-class-new-instance]]
+=== Class.newInstance
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`java.lang.Class`
 |`newInstance`
 |`java.lang.Class#newInstance`
+
+|===
+
+`Class.newInstance`, deprecated since Java 9, still keeps a constructor of its own. In JDK 25, `java.lang.Class` does this:
+
+[source,java]
+----
+Constructor<T> tmpConstructor = cachedConstructor;
+if (tmpConstructor == null) {
+    // ...
+    try {
+        Class<?>[] empty = {};
+        final Constructor<T> c = getReflectionFactory().copyConstructor(
+            getConstructor0(empty, Member.DECLARED));
+        // Disable accessibility checks on the constructor
+        // access check is done with the true caller
+        c.setAccessible(true);
+        cachedConstructor = tmpConstructor = c;
+----
+
+Finding the constructor fills `ReflectionData.declaredConstructors` with every declared constructor of the class. The copy is kept in `cachedConstructor`, a field of the `Class` itself rather than of its soft reflection data, so it lives as long as the class does. The call then goes through `Constructor.newInstance` with the real caller, which makes the constructor accessor and keeps it on the copy and on its root, as above.
+
+For a Micronaut bean or introspected type, `BeanIntrospection.instantiate` creates the instance from compiled code. Otherwise, call the constructor, or take a `Supplier` or a constructor reference.
+
+[[problem-open-module]]
+=== Module.addOpens
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
 
 |`java.lang.Module`
 |`addOpens`
@@ -611,11 +3555,71 @@ Object value = field.get(target);
 |`addOpens`
 |`java.lang.ModuleLayer.Controller#addOpens`
 
+|===
+
+`addOpens` opens a package of a module to another module at run time, which is what lets `setAccessible` reach its private members. In JDK 25, `java.lang.Module` does this:
+
+[source,java]
+----
+if (isNamed()) {
+    Module caller = getCallerModule(Reflection.getCallerClass());
+    if (caller != this && (caller == null || !isOpen(pn, caller)))
+        throw new IllegalCallerException(pn + " is not open to " + caller);
+    implAddExportsOrOpens(pn, other, /*open*/true, /*syncVM*/true);
+}
+----
+
+`ModuleLayer.Controller.addOpens` calls `implAddOpens`, which comes to the same method without asking the caller. The method tells the virtual machine, and then records the package in a static map of `Module`:
+
+[source,java]
+----
+// add package name to ReflectionData.exports if absent
+Map<String, Boolean> map = ReflectionData.exports
+    .computeIfAbsent(this, other,
+                     (m1, m2) -> new ConcurrentHashMap<>());
+if (open) {
+    map.put(pn, Boolean.TRUE);  // may need to promote from FALSE to TRUE
+----
+
+`Module.ReflectionData.exports` is a `WeakPairMap` keyed by the two modules, so the opening lasts as long as both modules do. Nothing in an unnamed, open or automatic module needs opening, and there the call does nothing.
+
+Where the package is a project's own, open it in `module-info.java`, or leave it closed and reach its members from code compiled in it, as Micronaut's generated code does.
+
+[[problem-instantiation-utils]]
+=== InstantiationUtils
+
+[cols="3,4,4"]
+|===
+|Declared by |Methods |Call pattern
+
 |`io.micronaut.core.reflect.InstantiationUtils`
 |Every method and constructor
 |`io.micronaut.core.reflect.InstantiationUtils#*`
 
 |===
+
+`InstantiationUtils` tries a `BeanIntrospection` first and falls back to reflection when the type has none. In Micronaut 5.1, it does this:
+
+[source,java]
+----
+return BeanIntrospector.SHARED.findIntrospection(type).map(BeanIntrospection::instantiate).orElseGet(() -> {
+    try {
+        // ...
+        return type.getDeclaredConstructor().newInstance();
+----
+
+`instantiate` with argument types, and `instantiateReflectively` directly, find the constructor, turn off its access checks and call it:
+
+[source,java]
+----
+final Constructor<T> declaredConstructor = type.getDeclaredConstructor(argTypes);
+declaredConstructor.setAccessible(true);
+return declaredConstructor.newInstance(args);
+----
+
+The fallback fills `ReflectionData.declaredConstructors` of the class and makes a constructor accessor kept on the root constructor, as above. The methods that take a class name load the class first with `ClassUtils.forName`, which calls `Class.forName` and initialises it. Which path is taken depends on whether the type is introspected, which the call site cannot show, so every method is reported.
+
+For a type known to be introspected, call `BeanIntrospection.instantiate` on its introspection, so that a missing introspection fails rather than reflecting quietly. `instantiateReflectively` is marked `@UsedByGeneratedCode`: Micronaut's generated code calls it itself for a constructor it cannot reach, which a project avoids by giving the constructor at least package visibility.
 
 == CUSTOM
 
@@ -625,3 +3629,10 @@ The calls a build forbids besides the categories, with `NoReflection:ForbiddenCa
 ----
 Object plugin = LegacyReflector.lookup("plugin"); // with forbid("com.example.LegacyReflector#*")
 ----
+
+[[problem-custom]]
+=== Forbidden calls
+
+The check knows nothing of what these calls do. It reports them because the build said so: a helper of the project's own, or of a library, that reaches for reflection behind a plain signature and so hides the calls the categories would otherwise report. There is no cache to describe here - what such a call fills is whatever the reflection inside it fills, described under the category of that reflection.
+
+The calls are listed in the `NoReflection:ForbiddenCalls` flag, as the section on <<flags, ErrorProne flags>> shows, which the <<gradlePlugin, Gradle plugin>> sets from `forbid(...)` in its `noReflection` block. A forbidden call is allowed again, like any other, throughout the project with `NoReflection:AllowedCalls`, or in the classes and packages where its category is allowed.

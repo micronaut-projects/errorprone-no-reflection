@@ -29,7 +29,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * What each {@link ReflectionCategory} matches, written as {@link CallPattern}s.
+ * What each {@link ReflectionProblem}, and so each {@link ReflectionCategory}, matches, written as {@link CallPattern}s.
  *
  * <p>A call is matched by the method the compiler resolved it to, which is what tells a reflective call from one of the
  * same name that is not: {@code Class.getAnnotation} asks the platform, {@code AnnotationMetadata.getAnnotation} reads
@@ -45,134 +45,202 @@ final class ReflectionMatchers {
     private static final List<Rule> RULES = new ArrayList<>();
 
     static {
-        rules(ReflectionCategory.ANNOTATION_SYNTHESIS,
+        rules(ReflectionProblem.ANNOTATION_SYNTHESIS,
             "io.micronaut.core.annotation.AnnotationSource+#synthesize|synthesizeDeclared|synthesizeAll"
                 + "|synthesizeAnnotationsByType|synthesizeDeclaredAnnotationsByType");
-        rules(ReflectionCategory.TARGET_MEMBERS,
-            "io.micronaut.inject.MethodReference+#getTargetMethod",
+        rules(ReflectionProblem.TARGET_METHOD,
+            "io.micronaut.inject.MethodReference+#getTargetMethod");
+        rules(ReflectionProblem.INJECTION_POINT_FIELD,
             "io.micronaut.inject.FieldInjectionPoint+#getField");
         // any method of the helper but the ones that read a table compiled into the class, check a name or build an
         // error message; matching the class keeps a helper added later inside
-        rules(ReflectionCategory.REFLECTION_UTILS,
+        rules(ReflectionProblem.REFLECTION_UTILS,
             "io.micronaut.core.reflect.ReflectionUtils#*-getWrapperType|getPrimitiveType|isSetter|newNoSuchMethodError");
-        rules(ReflectionCategory.BEANS,
-            "java.beans.Introspector#getBeanInfo",
-            "java.beans.Beans#instantiate|isInstanceOf|getInstanceOf",
-            "java.beans.Statement+#<init>|execute|getValue",
-            "java.beans.FeatureDescriptor+#<init>",
+        rules(ReflectionProblem.BEAN_INFO,
+            "java.beans.Introspector#getBeanInfo");
+        rules(ReflectionProblem.BEANS_INSTANTIATE,
+            "java.beans.Beans#instantiate|isInstanceOf|getInstanceOf");
+        rules(ReflectionProblem.BEAN_STATEMENT,
+            "java.beans.Statement+#<init>|execute|getValue");
+        rules(ReflectionProblem.FEATURE_DESCRIPTOR,
+            "java.beans.FeatureDescriptor+#<init>");
+        rules(ReflectionProblem.PROPERTY_DESCRIPTOR,
             "java.beans.PropertyDescriptor+#getPropertyType|getReadMethod|setReadMethod|getWriteMethod|setWriteMethod"
                 + "|createPropertyEditor|getIndexedPropertyType|getIndexedReadMethod|setIndexedReadMethod"
-                + "|getIndexedWriteMethod|setIndexedWriteMethod",
-            "java.beans.MethodDescriptor#getMethod",
-            "java.beans.EventSetDescriptor#getAddListenerMethod|getRemoveListenerMethod|getGetListenerMethod|getListenerMethods",
-            "java.beans.EventHandler#create|invoke",
-            "java.beans.Encoder+#writeObject|writeStatement|writeExpression|getPersistenceDelegate",
-            "java.beans.PersistenceDelegate+#writeObject|instantiate|initialize",
-            "java.beans.XMLDecoder#readObject",
+                + "|getIndexedWriteMethod|setIndexedWriteMethod");
+        rules(ReflectionProblem.METHOD_DESCRIPTOR,
+            "java.beans.MethodDescriptor#getMethod");
+        rules(ReflectionProblem.EVENT_SET_DESCRIPTOR,
+            "java.beans.EventSetDescriptor#getAddListenerMethod|getRemoveListenerMethod|getGetListenerMethod|getListenerMethods");
+        rules(ReflectionProblem.EVENT_HANDLER,
+            "java.beans.EventHandler#create|invoke");
+        rules(ReflectionProblem.BEAN_ENCODER,
+            "java.beans.Encoder+#writeObject|writeStatement|writeExpression|getPersistenceDelegate");
+        rules(ReflectionProblem.PERSISTENCE_DELEGATE,
+            "java.beans.PersistenceDelegate+#writeObject|instantiate|initialize");
+        rules(ReflectionProblem.XML_DECODER,
+            "java.beans.XMLDecoder#readObject");
+        rules(ReflectionProblem.PROPERTY_EDITOR,
             "java.beans.PropertyEditorManager#findEditor");
-        rules(ReflectionCategory.SERIALIZATION,
-            "java.io.ObjectInputStream+#readObject|readUnshared|defaultReadObject|readFields|resolveClass|resolveProxyClass",
-            "java.io.ObjectOutputStream+#writeObject|writeUnshared|defaultWriteObject|putFields|writeFields",
+        rules(ReflectionProblem.OBJECT_INPUT,
+            "java.io.ObjectInputStream+#readObject|readUnshared|defaultReadObject|readFields|resolveClass|resolveProxyClass");
+        rules(ReflectionProblem.OBJECT_OUTPUT,
+            "java.io.ObjectOutputStream+#writeObject|writeUnshared|defaultWriteObject|putFields|writeFields");
+        rules(ReflectionProblem.OBJECT_STREAM_CLASS,
             "java.io.ObjectStreamClass#lookup|lookupAny|forClass|getFields|getField|getSerialVersionUID");
-        rules(ReflectionCategory.UNSAFE,
-            "sun.misc.Unsafe#*",
+        rules(ReflectionProblem.UNSAFE,
+            "sun.misc.Unsafe#*");
+        rules(ReflectionProblem.REFLECTION_FACTORY,
             "sun.reflect.ReflectionFactory#*");
-        rules(ReflectionCategory.INSTRUMENTATION,
+        rules(ReflectionProblem.INSTRUMENTATION,
             "java.lang.instrument.Instrumentation+#*");
-        rules(ReflectionCategory.PROXY,
-            "java.lang.reflect.Proxy#*",
-            "java.lang.reflect.InvocationHandler#invokeDefault",
+        rules(ReflectionProblem.PROXY,
+            "java.lang.reflect.Proxy#*");
+        rules(ReflectionProblem.INVOKE_DEFAULT,
+            "java.lang.reflect.InvocationHandler#invokeDefault");
+        rules(ReflectionProblem.METHOD_HANDLE_PROXIES,
             "java.lang.invoke.MethodHandleProxies#*");
-        rules(ReflectionCategory.HANDLES,
-            "java.lang.invoke.*#*",
-            "java.lang.runtime.ObjectMethods#*",
-            "java.lang.runtime.SwitchBootstraps#*",
+        rules(ReflectionProblem.METHOD_HANDLES,
+            "java.lang.invoke.*#*");
+        rules(ReflectionProblem.OBJECT_METHODS,
+            "java.lang.runtime.ObjectMethods#*");
+        rules(ReflectionProblem.SWITCH_BOOTSTRAPS,
+            "java.lang.runtime.SwitchBootstraps#*");
+        rules(ReflectionProblem.CONSTANT_RESOLUTION,
             "java.lang.constant.ConstantDesc+#resolveConstantDesc",
-            "java.lang.constant.DynamicCallSiteDesc#resolveCallSiteDesc",
+            "java.lang.constant.DynamicCallSiteDesc#resolveCallSiteDesc");
+        rules(ReflectionProblem.FOREIGN_LINKER,
             "java.lang.foreign.Linker+#downcallHandle|upcallStub");
-        rules(ReflectionCategory.SERVICE_LOADING,
-            "java.util.ServiceLoader#*",
-            "java.util.ServiceLoader.Provider+#get",
+        rules(ReflectionProblem.SERVICE_LOADER,
+            "java.util.ServiceLoader#*");
+        rules(ReflectionProblem.SERVICE_PROVIDER,
+            "java.util.ServiceLoader.Provider+#get");
+        rules(ReflectionProblem.SOFT_SERVICE_LOADER,
             "io.micronaut.core.io.service.SoftServiceLoader#*");
-        rules(ReflectionCategory.CLASS_LOADING,
-            "java.lang.Class#forName",
-            "java.lang.ClassLoader+#loadClass|findClass|findLoadedClass|findSystemClass|defineClass|resolveClass",
-            "java.lang.ModuleLayer#defineModules|defineModulesWithOneLoader|defineModulesWithManyLoaders",
+        rules(ReflectionProblem.CLASS_FOR_NAME,
+            "java.lang.Class#forName");
+        rules(ReflectionProblem.CLASS_LOADER,
+            "java.lang.ClassLoader+#loadClass|findClass|findLoadedClass|findSystemClass|defineClass|resolveClass");
+        rules(ReflectionProblem.MODULE_LAYER,
+            "java.lang.ModuleLayer#defineModules|defineModulesWithOneLoader|defineModulesWithManyLoaders");
+        rules(ReflectionProblem.RESOURCE_BUNDLE,
             "java.util.ResourceBundle#getBundle",
-            "java.util.ResourceBundle.Control+#newBundle",
+            "java.util.ResourceBundle.Control+#newBundle");
+        rules(ReflectionProblem.CLASS_UTILS_FOR_NAME,
             "io.micronaut.core.reflect.ClassUtils#forName|isPresent");
-        rules(ReflectionCategory.FIELD_UPDATERS,
+        rules(ReflectionProblem.FIELD_UPDATER,
             "java.util.concurrent.atomic.AtomicReferenceFieldUpdater#newUpdater",
             "java.util.concurrent.atomic.AtomicIntegerFieldUpdater#newUpdater",
             "java.util.concurrent.atomic.AtomicLongFieldUpdater#newUpdater");
-        rules(ReflectionCategory.ENUM_CONSTANTS,
-            "java.lang.Class#getEnumConstants",
-            "java.lang.Enum#valueOf|describeConstable",
-            "java.lang.Enum.EnumDesc#of",
-            "java.util.EnumSet#noneOf|allOf|of|range|copyOf",
+        rules(ReflectionProblem.ENUM_CONSTANTS,
+            "java.lang.Class#getEnumConstants");
+        rules(ReflectionProblem.ENUM_VALUE_OF,
+            "java.lang.Enum#valueOf");
+        rules(ReflectionProblem.ENUM_DESCRIPTION,
+            "java.lang.Enum#describeConstable",
+            "java.lang.Enum.EnumDesc#of");
+        rules(ReflectionProblem.ENUM_SET,
+            "java.util.EnumSet#noneOf|allOf|of|range|copyOf");
+        rules(ReflectionProblem.ENUM_MAP,
             "java.util.EnumMap#<init>");
-        rules(ReflectionCategory.CLASS_NAMES,
-            "java.lang.Class#getSimpleName|getCanonicalName");
-        rules(ReflectionCategory.INTERFACES,
-            "java.lang.Class#getInterfaces",
+        rules(ReflectionProblem.SIMPLE_NAME,
+            "java.lang.Class#getSimpleName");
+        rules(ReflectionProblem.CANONICAL_NAME,
+            "java.lang.Class#getCanonicalName");
+        rules(ReflectionProblem.CLASS_INTERFACES,
+            "java.lang.Class#getInterfaces");
+        rules(ReflectionProblem.CLASS_HIERARCHY,
             "io.micronaut.core.reflect.ClassUtils#resolveHierarchy");
-        rules(ReflectionCategory.GENERIC_SIGNATURES,
-            "java.lang.Class#getGenericSuperclass|getGenericInterfaces|getTypeParameters|toGenericString",
+        rules(ReflectionProblem.CLASS_GENERIC_SIGNATURE,
+            "java.lang.Class#getGenericSuperclass|getGenericInterfaces|getTypeParameters|toGenericString");
+        rules(ReflectionProblem.MEMBER_GENERIC_SIGNATURE,
             "java.lang.reflect.Executable+#getGenericParameterTypes|getGenericExceptionTypes|getGenericReturnType"
                 + "|getTypeParameters|toGenericString",
             "java.lang.reflect.Field#getGenericType|toGenericString",
-            "java.lang.reflect.RecordComponent#getGenericType|getGenericSignature",
-            "java.lang.reflect.Parameter#getParameterizedType",
+            "java.lang.reflect.RecordComponent#getGenericType|getGenericSignature");
+        rules(ReflectionProblem.PARAMETERIZED_TYPE,
+            "java.lang.reflect.Parameter#getParameterizedType");
+        rules(ReflectionProblem.GENERIC_TYPES,
             "java.lang.reflect.ParameterizedType+#*",
             "java.lang.reflect.TypeVariable+#*",
             "java.lang.reflect.WildcardType+#*",
-            "java.lang.reflect.GenericArrayType+#*",
+            "java.lang.reflect.GenericArrayType+#*");
+        rules(ReflectionProblem.GENERIC_TYPE_UTILS,
             "io.micronaut.core.reflect.GenericTypeUtils#*");
-        rules(ReflectionCategory.ANNOTATIONS,
+        rules(ReflectionProblem.DECLARED_ANNOTATIONS,
             "java.lang.reflect.AnnotatedElement+#getAnnotation|getAnnotations|getDeclaredAnnotation|getDeclaredAnnotations"
-                + "|getAnnotationsByType|getDeclaredAnnotationsByType|isAnnotationPresent",
+                + "|getAnnotationsByType|getDeclaredAnnotationsByType|isAnnotationPresent");
+        rules(ReflectionProblem.PARAMETER_ANNOTATIONS,
+            "java.lang.reflect.Executable+#getParameterAnnotations");
+        rules(ReflectionProblem.ANNOTATION_DEFAULT,
+            "java.lang.reflect.Method#getDefaultValue");
+        rules(ReflectionProblem.ANNOTATED_TYPES,
             "java.lang.Class#getAnnotatedSuperclass|getAnnotatedInterfaces",
-            "java.lang.reflect.Executable+#getParameterAnnotations|getAnnotatedReturnType|getAnnotatedReceiverType"
-                + "|getAnnotatedParameterTypes|getAnnotatedExceptionTypes",
-            "java.lang.reflect.Method#getDefaultValue",
+            "java.lang.reflect.Executable+#getAnnotatedReturnType|getAnnotatedReceiverType|getAnnotatedParameterTypes"
+                + "|getAnnotatedExceptionTypes",
             "java.lang.reflect.Field#getAnnotatedType",
             "java.lang.reflect.RecordComponent#getAnnotatedType",
             "java.lang.reflect.Parameter#getAnnotatedType",
             "java.lang.reflect.AnnotatedType+#*");
-        rules(ReflectionCategory.CLASS_MEMBERS,
-            "java.lang.Class#getMethod|getMethods|getDeclaredMethod|getDeclaredMethods|getConstructor|getConstructors"
-                + "|getDeclaredConstructor|getDeclaredConstructors|getField|getFields|getDeclaredField|getDeclaredFields"
-                + "|getRecordComponents|getPermittedSubclasses|getNestMembers|getClasses|getDeclaredClasses"
-                + "|getEnclosingMethod|getEnclosingConstructor",
-            "java.lang.reflect.RecordComponent#getAccessor",
+        rules(ReflectionProblem.PUBLIC_METHODS,
+            "java.lang.Class#getMethod|getMethods");
+        rules(ReflectionProblem.DECLARED_METHODS,
+            "java.lang.Class#getDeclaredMethod|getDeclaredMethods");
+        rules(ReflectionProblem.PUBLIC_CONSTRUCTORS,
+            "java.lang.Class#getConstructor|getConstructors");
+        rules(ReflectionProblem.DECLARED_CONSTRUCTORS,
+            "java.lang.Class#getDeclaredConstructor|getDeclaredConstructors");
+        rules(ReflectionProblem.PUBLIC_FIELDS,
+            "java.lang.Class#getField|getFields");
+        rules(ReflectionProblem.DECLARED_FIELDS,
+            "java.lang.Class#getDeclaredField|getDeclaredFields");
+        rules(ReflectionProblem.RECORD_COMPONENTS,
+            "java.lang.Class#getRecordComponents",
+            "java.lang.reflect.RecordComponent#getAccessor");
+        rules(ReflectionProblem.PERMITTED_SUBCLASSES,
+            "java.lang.Class#getPermittedSubclasses");
+        rules(ReflectionProblem.NEST_MEMBERS,
+            "java.lang.Class#getNestMembers");
+        rules(ReflectionProblem.NESTED_CLASSES,
+            "java.lang.Class#getClasses|getDeclaredClasses");
+        rules(ReflectionProblem.ENCLOSING_MEMBER,
+            "java.lang.Class#getEnclosingMethod|getEnclosingConstructor");
+        rules(ReflectionProblem.EXECUTABLE_PARAMETERS,
             "java.lang.reflect.Executable+#getParameters");
-        rules(ReflectionCategory.REFLECTIVE_ACCESS,
-            "java.lang.reflect.AccessibleObject+#setAccessible|trySetAccessible|canAccess|isAccessible",
-            "java.lang.reflect.Constructor#newInstance",
-            "java.lang.reflect.Method#invoke",
-            // what reads or writes the value of a field, which makes its accessor; its name, type and modifiers do not
+        rules(ReflectionProblem.ACCESSIBILITY,
+            "java.lang.reflect.AccessibleObject+#setAccessible|trySetAccessible|canAccess|isAccessible");
+        rules(ReflectionProblem.CONSTRUCTOR_ACCESSOR,
+            "java.lang.reflect.Constructor#newInstance");
+        rules(ReflectionProblem.METHOD_ACCESSOR,
+            "java.lang.reflect.Method#invoke");
+        // what reads or writes the value of a field, which makes its accessor; its name, type and modifiers do not
+        rules(ReflectionProblem.FIELD_ACCESSOR,
             "java.lang.reflect.Field#get|getBoolean|getByte|getChar|getShort|getInt|getLong|getFloat|getDouble"
-                + "|set|setBoolean|setByte|setChar|setShort|setInt|setLong|setFloat|setDouble",
-            "java.lang.reflect.Array#*",
-            "java.lang.Class#newInstance",
+                + "|set|setBoolean|setByte|setChar|setShort|setInt|setLong|setFloat|setDouble");
+        rules(ReflectionProblem.ARRAYS,
+            "java.lang.reflect.Array#*");
+        rules(ReflectionProblem.CLASS_NEW_INSTANCE,
+            "java.lang.Class#newInstance");
+        rules(ReflectionProblem.OPEN_MODULE,
             "java.lang.Module#addOpens",
-            "java.lang.ModuleLayer.Controller#addOpens",
+            "java.lang.ModuleLayer.Controller#addOpens");
+        rules(ReflectionProblem.INSTANTIATION_UTILS,
             "io.micronaut.core.reflect.InstantiationUtils#*");
 
-        Set<ReflectionCategory> uncovered = EnumSet.allOf(ReflectionCategory.class);
-        uncovered.remove(ReflectionCategory.CUSTOM);
-        RULES.forEach(rule -> uncovered.remove(rule.category()));
+        Set<ReflectionProblem> uncovered = EnumSet.allOf(ReflectionProblem.class);
+        uncovered.remove(ReflectionProblem.CUSTOM);
+        RULES.forEach(rule -> uncovered.remove(rule.problem()));
         if (!uncovered.isEmpty()) {
-            throw new IllegalStateException("No calls for the reflection categories " + uncovered);
+            throw new IllegalStateException("No calls for the reflection problems " + uncovered);
         }
     }
 
     private ReflectionMatchers() {
     }
 
-    private static void rules(ReflectionCategory category, String... patterns) {
+    private static void rules(ReflectionProblem problem, String... patterns) {
         for (String pattern : patterns) {
-            RULES.add(new Rule(category, CallPattern.parse(pattern)));
+            RULES.add(new Rule(problem, CallPattern.parse(pattern)));
         }
     }
 
@@ -182,7 +250,18 @@ final class ReflectionMatchers {
     static Map<ReflectionCategory, List<String>> patterns() {
         Map<ReflectionCategory, List<String>> patterns = new EnumMap<>(ReflectionCategory.class);
         for (Rule rule : RULES) {
-            patterns.computeIfAbsent(rule.category(), category -> new ArrayList<>()).add(rule.pattern().toString());
+            patterns.computeIfAbsent(rule.problem().category(), category -> new ArrayList<>()).add(rule.pattern().toString());
+        }
+        return patterns;
+    }
+
+    /**
+     * @return The calls of each problem as the patterns they are written as, in the order they are tried
+     */
+    static Map<ReflectionProblem, List<String>> problemPatterns() {
+        Map<ReflectionProblem, List<String>> patterns = new EnumMap<>(ReflectionProblem.class);
+        for (Rule rule : RULES) {
+            patterns.computeIfAbsent(rule.problem(), problem -> new ArrayList<>()).add(rule.pattern().toString());
         }
         return patterns;
     }
@@ -190,15 +269,15 @@ final class ReflectionMatchers {
     /**
      * @param method The method, or constructor, a call or a reference resolved to
      * @param state  The state
-     * @return The category the method belongs to, or {@code null} when it belongs to none
+     * @return The problem the method belongs to, or {@code null} when it belongs to none
      */
-    static ReflectionCategory categoryOf(Symbol.MethodSymbol method, VisitorState state) {
+    static ReflectionProblem problemOf(Symbol.MethodSymbol method, VisitorState state) {
         for (Rule rule : RULES) {
             if (matches(rule.pattern(), method, state)) {
-                return rule.category();
+                return rule.problem();
             }
         }
-        return isValueOfAnEnum(method) ? ReflectionCategory.ENUM_CONSTANTS : null;
+        return isValueOfAnEnum(method) ? ReflectionProblem.ENUM_VALUE_OF : null;
     }
 
     /**
@@ -247,6 +326,6 @@ final class ReflectionMatchers {
             && method.type.getParameterTypes().head.tsym.getQualifiedName().contentEquals("java.lang.String");
     }
 
-    private record Rule(ReflectionCategory category, CallPattern pattern) {
+    private record Rule(ReflectionProblem problem, CallPattern pattern) {
     }
 }

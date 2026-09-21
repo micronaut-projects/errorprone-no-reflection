@@ -166,6 +166,40 @@ class NoReflectionTest {
         helper().addSourceLines("Subject.java", EVERY_CATEGORY).doTest();
     }
 
+    /** A report links to the section of the guide on its problem, which tells apart calls of the same category. */
+    @Test
+    void linksEachReportToTheSectionOfTheGuideOnItsProblem() {
+        helper()
+            .setArgs("-XepOpt:NoReflection:ForbiddenCalls=example.Registry#lookup")
+            .addSourceLines("example/Registry.java", """
+                package example;
+                public final class Registry {
+                    public static Object lookup(String name) { return null; }
+                }
+                """)
+            .addSourceLines("example/Subject.java", """
+                package example;
+                class Subject {
+                    enum Colour { RED }
+                    void reflect(Class<?> type) throws Exception {
+                        // BUG: Diagnostic contains: (see https://micronaut-projects.github.io/errorprone-no-reflection/latest/guide/#problem-simple-name)
+                        type.getSimpleName();
+                        // BUG: Diagnostic contains: guide/#problem-canonical-name
+                        type.getCanonicalName();
+                        // BUG: Diagnostic contains: guide/#problem-declared-methods
+                        type.getDeclaredMethod("reflect", Class.class);
+                        // BUG: Diagnostic contains: guide/#problem-public-methods
+                        type.getMethods();
+                        // BUG: Diagnostic contains: guide/#problem-enum-value-of
+                        Colour.valueOf("RED");
+                        // BUG: Diagnostic contains: guide/#problem-custom
+                        Registry.lookup("x");
+                    }
+                }
+                """)
+            .doTest();
+    }
+
     /** The calls whose purpose is a cache the virtual machine fills for a class or a member, constructors and references included. */
     @Test
     void reportsTheCallsThatFillACacheOfTheVirtualMachine() {

@@ -46,7 +46,7 @@ This project makes "no reflection" something the compiler enforces rather than a
 
 ## What is reported
 
-The check reports a call, a method reference or a constructor when the method or constructor it resolves to is among the calls below, and names the category it belongs to. The categories are tried in this order, and a call two of them name is reported under the first. The Micronaut categories, and the Micronaut types named in the others, match nothing in a project without Micronaut. The [guide](https://micronaut-projects.github.io/errorprone-no-reflection/latest/guide/#categories) lists the same calls with the pattern each is written as.
+The check reports a call, a method reference or a constructor when the method or constructor it resolves to is among the calls below, and names the category it belongs to. The categories are tried in this order, and a call two of them name is reported under the first. The Micronaut categories, and the Micronaut types named in the others, match nothing in a project without Micronaut. The [guide](https://micronaut-projects.github.io/errorprone-no-reflection/latest/guide/#categories) lists the same calls with the pattern each is written as, and says for each what the platform does and which cache it fills, quoting JDK 25; every report links to the section on its call.
 
 ### `ANNOTATION_SYNTHESIS`
 
