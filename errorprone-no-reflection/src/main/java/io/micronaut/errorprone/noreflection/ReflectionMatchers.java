@@ -161,10 +161,10 @@ final class ReflectionMatchers {
         rules(ReflectionProblem.PARAMETERIZED_TYPE,
             "java.lang.reflect.Parameter#getParameterizedType");
         rules(ReflectionProblem.GENERIC_TYPES,
-            "java.lang.reflect.ParameterizedType+#*",
-            "java.lang.reflect.TypeVariable+#*",
-            "java.lang.reflect.WildcardType+#*",
-            "java.lang.reflect.GenericArrayType+#*");
+            // only what hands back a class or a member, or parses annotations: the arguments, bounds and name of a
+            // type are read from a type already at hand, which came from a reported call or was built by the project
+            "java.lang.reflect.GenericDeclaration#getTypeParameters",
+            "java.lang.reflect.TypeVariable+#getGenericDeclaration|getAnnotatedBounds");
         rules(ReflectionProblem.GENERIC_TYPE_UTILS,
             "io.micronaut.core.reflect.GenericTypeUtils#*");
         rules(ReflectionProblem.DECLARED_ANNOTATIONS,

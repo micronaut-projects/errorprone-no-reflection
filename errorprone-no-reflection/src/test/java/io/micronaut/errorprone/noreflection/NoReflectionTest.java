@@ -404,6 +404,196 @@ class NoReflectionTest {
             """).doTest();
     }
 
+    /** The arguments, bounds and name of a generic type already at hand are read, not looked up, whoever implements the type. */
+    @Test
+    void doesNotReportReadingAGenericTypeAlreadyAtHand() {
+        helper().addSourceLines("Subject.java", """
+            import java.lang.reflect.GenericArrayType;
+            import java.lang.reflect.ParameterizedType;
+            import java.lang.reflect.Type;
+            import java.lang.reflect.TypeVariable;
+            import java.lang.reflect.WildcardType;
+            import java.util.function.Function;
+            class Subject {
+                record Parameterized(Class<?> raw, Type... arguments) implements ParameterizedType {
+                    @Override public Type[] getActualTypeArguments() { return arguments.clone(); }
+                    @Override public Type getRawType() { return raw; }
+                    @Override public Type getOwnerType() { return null; }
+                }
+                record Wildcard(Type[] upper, Type[] lower) implements WildcardType {
+                    @Override public Type[] getUpperBounds() { return upper.clone(); }
+                    @Override public Type[] getLowerBounds() { return lower.clone(); }
+                }
+                record GenericArray(Type component) implements GenericArrayType {
+                    @Override public Type getGenericComponentType() { return component; }
+                }
+                static final class Variable implements TypeVariable<Class<?>> {
+                    @Override public Type[] getBounds() { return new Type[] {Object.class}; }
+                    @Override public Class<?> getGenericDeclaration() { return null; }
+                    @Override public String getName() { return "T"; }
+                    @Override public java.lang.reflect.AnnotatedType[] getAnnotatedBounds() { return null; }
+                    @Override public <A extends java.lang.annotation.Annotation> A getAnnotation(Class<A> type) { return null; }
+                    @Override public java.lang.annotation.Annotation[] getAnnotations() { return null; }
+                    @Override public java.lang.annotation.Annotation[] getDeclaredAnnotations() { return null; }
+                }
+                void read(ParameterizedType parameterized, TypeVariable<?> variable, WildcardType wildcard, GenericArrayType array) {
+                    parameterized.getRawType();
+                    parameterized.getActualTypeArguments();
+                    parameterized.getOwnerType();
+                    parameterized.getTypeName();
+                    variable.getBounds();
+                    variable.getName();
+                    wildcard.getUpperBounds();
+                    wildcard.getLowerBounds();
+                    array.getGenericComponentType();
+                }
+                void readOwn(Parameterized parameterized, Variable variable, Wildcard wildcard, GenericArray array) {
+                    parameterized.getRawType();
+                    parameterized.getActualTypeArguments();
+                    parameterized.getOwnerType();
+                    parameterized.raw();
+                    parameterized.equals(parameterized);
+                    parameterized.hashCode();
+                    parameterized.toString();
+                    variable.getBounds();
+                    variable.getName();
+                    wildcard.getUpperBounds();
+                    wildcard.getLowerBounds();
+                    wildcard.upper();
+                    array.getGenericComponentType();
+                    array.component();
+                }
+                Function<ParameterizedType, Type> raw = ParameterizedType::getRawType;
+                Function<TypeVariable<?>, Type[]> bounds = TypeVariable::getBounds;
+                Function<Parameterized, Type[]> arguments = Parameterized::getActualTypeArguments;
+            }
+            """).doTest();
+    }
+
+    /** A class of the project that implements a generic type is a value class: creating it and its factories ask the platform nothing. */
+    @Test
+    void doesNotReportBuildingAGenericTypeTheProjectImplements() {
+        helper().addSourceLines("Subject.java", """
+            import java.lang.reflect.GenericArrayType;
+            import java.lang.reflect.ParameterizedType;
+            import java.lang.reflect.Type;
+            import java.lang.reflect.TypeVariable;
+            import java.lang.reflect.WildcardType;
+            import java.util.function.Function;
+            class Subject {
+                static class Parameterized implements ParameterizedType {
+                    final Class<?> raw;
+                    final Type[] arguments;
+                    Parameterized(Class<?> raw, Type... arguments) {
+                        this.raw = raw;
+                        this.arguments = arguments;
+                    }
+                    static Parameterized of(Class<?> raw, Type... arguments) { return new Parameterized(raw, arguments); }
+                    @Override public Type[] getActualTypeArguments() { return arguments.clone(); }
+                    @Override public Type getRawType() { return raw; }
+                    @Override public Type getOwnerType() { return null; }
+                }
+                static final class Named extends Parameterized {
+                    Named(Class<?> raw) {
+                        super(raw);
+                    }
+                }
+                record Wildcard(Type[] upper, Type[] lower) implements WildcardType {
+                    @Override public Type[] getUpperBounds() { return upper.clone(); }
+                    @Override public Type[] getLowerBounds() { return lower.clone(); }
+                }
+                record GenericArray(Type component) implements GenericArrayType {
+                    @Override public Type getGenericComponentType() { return component; }
+                }
+                static final class Variable implements TypeVariable<Class<?>> {
+                    private Type[] bounds = {Object.class};
+                    Variable bounds(Type... bounds) { this.bounds = bounds; return this; }
+                    @Override public Type[] getBounds() { return bounds.clone(); }
+                    @Override public Class<?> getGenericDeclaration() { return null; }
+                    @Override public String getName() { return "T"; }
+                    @Override public java.lang.reflect.AnnotatedType[] getAnnotatedBounds() { return null; }
+                    @Override public <A extends java.lang.annotation.Annotation> A getAnnotation(Class<A> type) { return null; }
+                    @Override public java.lang.annotation.Annotation[] getAnnotations() { return null; }
+                    @Override public java.lang.annotation.Annotation[] getDeclaredAnnotations() { return null; }
+                }
+                Object build() {
+                    new Parameterized(java.util.List.class, String.class);
+                    Parameterized.of(java.util.List.class, String.class);
+                    new Named(java.util.List.class);
+                    new Wildcard(new Type[] {Object.class}, new Type[0]);
+                    new GenericArray(String.class);
+                    new Variable().bounds(Number.class);
+                    return new ParameterizedType() {
+                        @Override public Type[] getActualTypeArguments() { return new Type[0]; }
+                        @Override public Type getRawType() { return Object.class; }
+                        @Override public Type getOwnerType() { return null; }
+                    };
+                }
+                Function<Type, GenericArray> arrays = GenericArray::new;
+            }
+            """).doTest();
+    }
+
+    /** What obtains a generic type from a class or a member, or goes back to one from a type variable, is still reported. */
+    @Test
+    void reportsObtainingAGenericTypeAndGoingBackFromATypeVariable() {
+        helper().addSourceLines("Subject.java", """
+            import java.lang.reflect.GenericDeclaration;
+            import java.lang.reflect.Type;
+            import java.lang.reflect.TypeVariable;
+            import java.util.function.Function;
+            class Subject {
+                static final class Variable implements TypeVariable<Class<?>> {
+                    @Override public Type[] getBounds() { return new Type[] {Object.class}; }
+                    @Override public Class<?> getGenericDeclaration() { return null; }
+                    @Override public String getName() { return "T"; }
+                    @Override public java.lang.reflect.AnnotatedType[] getAnnotatedBounds() { return null; }
+                    @Override public <A extends java.lang.annotation.Annotation> A getAnnotation(Class<A> type) { return null; }
+                    @Override public java.lang.annotation.Annotation[] getAnnotations() { return null; }
+                    @Override public java.lang.annotation.Annotation[] getDeclaredAnnotations() { return null; }
+                }
+                void reflect(Class<?> type, java.lang.reflect.Method method, java.lang.reflect.Constructor<?> constructor,
+                             java.lang.reflect.Field field, java.lang.reflect.Parameter parameter, GenericDeclaration declaration,
+                             TypeVariable<?> variable, Variable own) {
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    type.getGenericSuperclass();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    type.getGenericInterfaces();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    type.getTypeParameters();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    method.getGenericReturnType();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    method.getGenericParameterTypes();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    method.getTypeParameters();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    constructor.getGenericParameterTypes();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    field.getGenericType();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    parameter.getParameterizedType();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    declaration.getTypeParameters();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    variable.getGenericDeclaration();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    variable.getAnnotatedBounds();
+                    // BUG: Diagnostic contains: [ANNOTATIONS]
+                    variable.getAnnotation(Deprecated.class);
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    own.getGenericDeclaration();
+                    // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                    own.getAnnotatedBounds();
+                    // BUG: Diagnostic contains: [ANNOTATIONS]
+                    own.getAnnotation(Deprecated.class);
+                }
+                // BUG: Diagnostic contains: [GENERIC_SIGNATURES]
+                Function<TypeVariable<?>, GenericDeclaration> declarations = TypeVariable::getGenericDeclaration;
+            }
+            """).doTest();
+    }
+
     /** Allowed categories are not reported, and every other one still is. */
     @Test
     void allowsTheCategoriesTheBuildNames() {

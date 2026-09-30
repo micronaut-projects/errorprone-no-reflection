@@ -57,8 +57,11 @@ method.getName();                                            // a member already
 field.getType();
 ReflectionUtils.isSetter("setName", parameterTypes);          // checks a name
 Introspector.decapitalize("URL");
+parameterizedType.getActualTypeArguments();                  // a generic type already at hand
+typeVariable.getBounds();
+new MyParameterizedType(List.class, String.class);           // a generic type the project implements
 ----
 
-Reading the name, type, modifiers or declared types of a `java.lang.reflect` member that is already at hand is not reported: looking it up was. The generic and annotated types a member hands out are the exception - their methods resolve the classes and annotations they describe, and are reported as `GENERIC_SIGNATURES` and `ANNOTATIONS`.
+Reading the name, type, modifiers or declared types of a `java.lang.reflect` member that is already at hand is not reported: looking it up was. Asking a member for its generic or annotated types is reported, as `GENERIC_SIGNATURES` and `ANNOTATIONS`. Reading the arguments, bounds or name of a generic type it handed out is not, and the methods of an annotated type, which resolve the annotations they describe, are.
 
 A class or method a project writes itself, wrapping any of the calls above, is not reported where it is called - the call inside it is. `NoReflection:ForbiddenCalls` reports such a wrapper's own callers too.
