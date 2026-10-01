@@ -3351,7 +3351,7 @@ if (enclosingClass == null) { // top level class
 <h2 id="_generic_signatures">GENERIC_SIGNATURES</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name - which is why every method of a generic type is reported too.</p>
+<p>A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name. Asking a class or a member for its generic types is what is reported; reading the arguments, bounds or name of a type that is already at hand is not, and neither is a <code>ParameterizedType</code>, <code>TypeVariable</code>, <code>WildcardType</code> or <code>GenericArrayType</code> a project implements itself.</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -3573,29 +3573,37 @@ res.genericInfo = genericInfo;</code></pre>
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.ParameterizedType</code> and every subtype of it</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.ParameterizedType+#*</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.GenericDeclaration</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getTypeParameters</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.GenericDeclaration#getTypeParameters</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.TypeVariable</code> and every subtype of it</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.TypeVariable+#*</code></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.WildcardType</code> and every subtype of it</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.WildcardType+#*</code></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.GenericArrayType</code> and every subtype of it</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Every method and constructor</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.GenericArrayType+#*</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getGenericDeclaration</code>, <code>getAnnotatedBounds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>java.lang.reflect.TypeVariable+#getGenericDeclaration|getAnnotatedBounds</code></p></td>
 </tr>
 </tbody>
 </table>
 <div class="paragraph">
-<p>These are the objects a generic signature produces, and some of them finish their work only when asked. In JDK 25, <code>sun.reflect.generics.reflectiveObjects.TypeVariableImpl</code> keeps the bounds as a piece of the parsed signature until the first call, then replaces them with the types it builds:</p>
+<p>A <code>ParameterizedType</code>, <code>TypeVariable</code>, <code>WildcardType</code> or <code>GenericArrayType</code> is the object a generic signature produces, and two methods of a type variable go back to the platform from it. <code>getGenericDeclaration</code> hands out the <code>Class</code>, <code>Method</code> or <code>Constructor</code> that declares the variable, which is then used reflectively, and <code>getAnnotatedBounds</code> parses the type annotations of that declaration on every call. <code>GenericDeclaration.getTypeParameters</code> is the same question as <code>Class.getTypeParameters</code> asked through the interface the three of them implement, so the declaration a type variable hands out cannot be asked for its variables unreported either.</p>
+</div>
+<div class="paragraph">
+<p>The other methods of these types are not reported:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">parameterized.getRawType();
+parameterized.getActualTypeArguments();
+parameterized.getOwnerType();
+variable.getName();
+variable.getBounds();
+wildcard.getUpperBounds();
+wildcard.getLowerBounds();
+array.getGenericComponentType();</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>They read a type that is already at hand, and look nothing up in a class. A <code>ParameterizedTypeImpl</code> or <code>GenericArrayTypeImpl</code> of the JDK is complete when it is made, so its getters read final fields and fill no cache. Some of the others finish their work only when asked: in JDK 25, <code>sun.reflect.generics.reflectiveObjects.TypeVariableImpl</code> keeps the bounds as a piece of the parsed signature until the first call, then replaces them with the types it builds:</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -3610,10 +3618,10 @@ res.genericInfo = genericInfo;</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p><code>WildcardTypeImpl</code> does the same with its upper and lower bounds. Building a bound loads the classes it names, as described above, and the result is kept in the type variable or wildcard - which is itself kept by the <code>genericInfo</code> of the class or member it came from. The annotation methods of a <code>TypeVariable</code> parse the type annotations of the declaring class or member on every call, and keep nothing.</p>
+<p><code>WildcardTypeImpl</code> does the same with its upper and lower bounds. Building a bound loads the classes it names, and the result is kept in the type variable or wildcard - which is itself kept by the <code>genericInfo</code> of the class or member it came from. That is not reported a second time, because the only way to such a type is a call that already was: <code>getTypeParameters</code>, <code>getGenericSuperclass</code>, <code>getGenericReturnType</code> and the others above, the type arguments and bounds of a type one of them returned, or <code>AnnotatedType.getType</code>, which is reported as <code>ANNOTATIONS</code>. A project that allows one of those calls allows what the type it returns goes on to say, and a project that allows none has no such type to ask.</p>
 </div>
 <div class="paragraph">
-<p>A <code>ParameterizedTypeImpl</code> or <code>GenericArrayTypeImpl</code> is complete when it is made, so its getters read final fields and fill no cache. They are reported because such a type exists only where a generic signature was read, and because the classes it hands out are then used reflectively.</p>
+<p>A type that does not come from a generic signature comes from code: an API such as CDI&#8217;s <code>BeanContainer.getBeans(Type, Annotation&#8230;&#8203;)</code> takes a <code>Type</code>, and its caller builds one from what was compiled. A class that implements one of the four interfaces is a value class like any other, so creating it, its static factories and its own methods are not reported, and comparing two types through the accessors above is not either. Only <code>getGenericDeclaration</code> and <code>getAnnotatedBounds</code> are reported on such a class too, since a call through the interface cannot tell whose variable it is, and its annotation methods are reported as <code>ANNOTATIONS</code> like those of any <code>AnnotatedElement</code>.</p>
 </div>
 <div class="paragraph">
 <p>Where the type arguments are needed at run time, Micronaut&#8217;s <code>Argument</code> carries them as compiled - <code>getTypeParameters()</code> on the <code>Argument</code> of a bean property or a method argument answers what <code>ParameterizedType.getActualTypeArguments</code> would.</p>
@@ -5246,11 +5254,14 @@ type.getSuperclass();
 method.getName();                                            // a member already looked up
 field.getType();
 ReflectionUtils.isSetter("setName", parameterTypes);          // checks a name
-Introspector.decapitalize("URL");</code></pre>
+Introspector.decapitalize("URL");
+parameterizedType.getActualTypeArguments();                  // a generic type already at hand
+typeVariable.getBounds();
+new MyParameterizedType(List.class, String.class);           // a generic type the project implements</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>Reading the name, type, modifiers or declared types of a <code>java.lang.reflect</code> member that is already at hand is not reported: looking it up was. The generic and annotated types a member hands out are the exception - their methods resolve the classes and annotations they describe, and are reported as <code>GENERIC_SIGNATURES</code> and <code>ANNOTATIONS</code>.</p>
+<p>Reading the name, type, modifiers or declared types of a <code>java.lang.reflect</code> member that is already at hand is not reported: looking it up was. Asking a member for its generic or annotated types is reported, as <code>GENERIC_SIGNATURES</code> and <code>ANNOTATIONS</code>. Reading the arguments, bounds or name of a generic type it handed out is not, and the methods of an annotated type, which resolve the annotations they describe, are.</p>
 </div>
 <div class="paragraph">
 <p>A class or method a project writes itself, wrapping any of the calls above, is not reported where it is called - the call inside it is. <code>NoReflection:ForbiddenCalls</code> reports such a wrapper&#8217;s own callers too.</p>
