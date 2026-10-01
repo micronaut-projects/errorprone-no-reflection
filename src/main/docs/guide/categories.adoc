@@ -2281,7 +2281,7 @@ Where the question is whether a type is a subtype of a known one, `Class.isAssig
 
 == GENERIC_SIGNATURES
 
-A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name - which is why every method of a generic type is reported too.
+A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name. Asking a class or a member for its generic types is what is reported; reading the arguments, bounds or name of a type that is already at hand is not, and neither is a `ParameterizedType`, `TypeVariable`, `WildcardType` or `GenericArrayType` a project implements itself.
 
 [source,java]
 ----
@@ -2444,25 +2444,33 @@ For a Micronaut bean, the `ExecutableMethod` of a method has each argument, with
 |===
 |Declared by |Methods |Call pattern
 
-|`java.lang.reflect.ParameterizedType` and every subtype of it
-|Every method and constructor
-|`java.lang.reflect.ParameterizedType+#*`
+|`java.lang.reflect.GenericDeclaration`
+|`getTypeParameters`
+|`java.lang.reflect.GenericDeclaration#getTypeParameters`
 
 |`java.lang.reflect.TypeVariable` and every subtype of it
-|Every method and constructor
-|`java.lang.reflect.TypeVariable+#*`
-
-|`java.lang.reflect.WildcardType` and every subtype of it
-|Every method and constructor
-|`java.lang.reflect.WildcardType+#*`
-
-|`java.lang.reflect.GenericArrayType` and every subtype of it
-|Every method and constructor
-|`java.lang.reflect.GenericArrayType+#*`
+|`getGenericDeclaration`, `getAnnotatedBounds`
+|`java.lang.reflect.TypeVariable+#getGenericDeclaration\|getAnnotatedBounds`
 
 |===
 
-These are the objects a generic signature produces, and some of them finish their work only when asked. In JDK 25, `sun.reflect.generics.reflectiveObjects.TypeVariableImpl` keeps the bounds as a piece of the parsed signature until the first call, then replaces them with the types it builds:
+A `ParameterizedType`, `TypeVariable`, `WildcardType` or `GenericArrayType` is the object a generic signature produces, and two methods of a type variable go back to the platform from it. `getGenericDeclaration` hands out the `Class`, `Method` or `Constructor` that declares the variable, which is then used reflectively, and `getAnnotatedBounds` parses the type annotations of that declaration on every call. `GenericDeclaration.getTypeParameters` is the same question as `Class.getTypeParameters` asked through the interface the three of them implement, so the declaration a type variable hands out cannot be asked for its variables unreported either.
+
+The other methods of these types are not reported:
+
+[source,java]
+----
+parameterized.getRawType();
+parameterized.getActualTypeArguments();
+parameterized.getOwnerType();
+variable.getName();
+variable.getBounds();
+wildcard.getUpperBounds();
+wildcard.getLowerBounds();
+array.getGenericComponentType();
+----
+
+They read a type that is already at hand, and look nothing up in a class. A `ParameterizedTypeImpl` or `GenericArrayTypeImpl` of the JDK is complete when it is made, so its getters read final fields and fill no cache. Some of the others finish their work only when asked: in JDK 25, `sun.reflect.generics.reflectiveObjects.TypeVariableImpl` keeps the bounds as a piece of the parsed signature until the first call, then replaces them with the types it builds:
 
 [source,java]
 ----
@@ -2476,9 +2484,9 @@ public Type[] getBounds() {
 }
 ----
 
-`WildcardTypeImpl` does the same with its upper and lower bounds. Building a bound loads the classes it names, as described above, and the result is kept in the type variable or wildcard - which is itself kept by the `genericInfo` of the class or member it came from. The annotation methods of a `TypeVariable` parse the type annotations of the declaring class or member on every call, and keep nothing.
+`WildcardTypeImpl` does the same with its upper and lower bounds. Building a bound loads the classes it names, and the result is kept in the type variable or wildcard - which is itself kept by the `genericInfo` of the class or member it came from. That is not reported a second time, because the only way to such a type is a call that already was: `getTypeParameters`, `getGenericSuperclass`, `getGenericReturnType` and the others above, the type arguments and bounds of a type one of them returned, or `AnnotatedType.getType`, which is reported as `ANNOTATIONS`. A project that allows one of those calls allows what the type it returns goes on to say, and a project that allows none has no such type to ask.
 
-A `ParameterizedTypeImpl` or `GenericArrayTypeImpl` is complete when it is made, so its getters read final fields and fill no cache. They are reported because such a type exists only where a generic signature was read, and because the classes it hands out are then used reflectively.
+A type that does not come from a generic signature comes from code: an API such as CDI's `BeanContainer.getBeans(Type, Annotation...)` takes a `Type`, and its caller builds one from what was compiled. A class that implements one of the four interfaces is a value class like any other, so creating it, its static factories and its own methods are not reported, and comparing two types through the accessors above is not either. Only `getGenericDeclaration` and `getAnnotatedBounds` are reported on such a class too, since a call through the interface cannot tell whose variable it is, and its annotation methods are reported as `ANNOTATIONS` like those of any `AnnotatedElement`.
 
 Where the type arguments are needed at run time, Micronaut's `Argument` carries them as compiled - `getTypeParameters()` on the `Argument` of a bean property or a method argument answers what `ParameterizedType.getActualTypeArguments` would.
 

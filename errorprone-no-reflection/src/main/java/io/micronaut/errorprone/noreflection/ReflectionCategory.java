@@ -91,7 +91,10 @@ public enum ReflectionCategory {
     /** {@code Class.getInterfaces}, which fills the reflection data of the class, and Micronaut's {@code ClassUtils.resolveHierarchy}. */
     INTERFACES,
 
-    /** Generic signatures, parsed and cached for a class or a member, the types they produce, and Micronaut's {@code GenericTypeUtils}. */
+    /**
+     * Generic signatures, parsed and cached for a class or a member, the declaration and annotated bounds of a type
+     * variable, and Micronaut's {@code GenericTypeUtils}.
+     */
     GENERIC_SIGNATURES,
 
     /** Annotations read from a class, a member, a parameter or a type use, rather than from Micronaut's metadata. */

@@ -239,7 +239,7 @@ Class<?>[] interfaces = type.getInterfaces();
 
 ### `GENERIC_SIGNATURES`
 
-A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name - which is why every method of a generic type is reported too.
+A generic signature is parsed from the class file on first use and kept for the class or the member, and the types it produces load the classes they name. Asking a class or a member for its generic types is what is reported; reading the arguments, bounds or name of a type that is already at hand is not, and neither is a `ParameterizedType`, `TypeVariable`, `WildcardType` or `GenericArrayType` a project implements itself.
 
 ```java
 Type superclass = type.getGenericSuperclass();
@@ -250,10 +250,8 @@ Type superclass = type.getGenericSuperclass();
 - `java.lang.reflect.Field`: `getGenericType`, `toGenericString`
 - `java.lang.reflect.RecordComponent`: `getGenericType`, `getGenericSignature`
 - `java.lang.reflect.Parameter`: `getParameterizedType`
-- `java.lang.reflect.ParameterizedType` and every subtype of it: every method and constructor
-- `java.lang.reflect.TypeVariable` and every subtype of it: every method and constructor
-- `java.lang.reflect.WildcardType` and every subtype of it: every method and constructor
-- `java.lang.reflect.GenericArrayType` and every subtype of it: every method and constructor
+- `java.lang.reflect.GenericDeclaration`: `getTypeParameters`
+- `java.lang.reflect.TypeVariable` and every subtype of it: `getGenericDeclaration`, `getAnnotatedBounds`
 - `io.micronaut.core.reflect.GenericTypeUtils`: every method and constructor
 
 ### `ANNOTATIONS`
